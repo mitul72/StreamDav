@@ -20,15 +20,21 @@ The executable file can be found in the [releases](https://github.com/mitul72/St
 - Java JDK 21 or later
 - Gradle 8.6 or later
 ### Build instructions
-```
 1. Clone the repository:
-    git clone https://github.com/mitul72/StreamDav.git
+```
+git clone https://github.com/mitul72/StreamDav.git
+```
 2. Navigate to the project directory:
-    cd StreamDav
+```
+cd StreamDav
+```
 3. Build the project with Gradle:
-    ./gradlew build
+```
+./gradlew build
+```
 4. Run the application using Gradle:
-    ./gradlew run
+```
+./gradlew run
 ```
 
 
