@@ -34,6 +34,8 @@ public final class JavaFxPlayback implements Playback {
     private final Duration start;
     private MediaPlayer player;
     private String errorMessage;
+    /** Whether to start once the file is ready; pausing while it loads clears it. */
+    private boolean playWhenReady = true;
 
     public JavaFxPlayback(URI url, Duration start) {
         this.start = start;
@@ -68,7 +70,11 @@ public final class JavaFxPlayback implements Playback {
         if (start.greaterThan(Duration.ZERO)) {
             player.seek(start);
         }
-        player.play();
+        if (playWhenReady) {
+            player.play();
+        } else if (status.get() == Status.LOADING) {
+            status.set(Status.PAUSED);
+        }
     }
 
     private void onStatusChanged(MediaPlayer.Status playerStatus) {
@@ -151,6 +157,7 @@ public final class JavaFxPlayback implements Playback {
 
     @Override
     public void play() {
+        playWhenReady = true;
         if (player == null) {
             return;
         }
@@ -167,6 +174,7 @@ public final class JavaFxPlayback implements Playback {
 
     @Override
     public void pause() {
+        playWhenReady = false;
         if (player != null) {
             player.pause();
         }
