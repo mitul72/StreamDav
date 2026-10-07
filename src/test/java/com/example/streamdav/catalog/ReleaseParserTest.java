@@ -217,6 +217,8 @@ class ReleaseParserTest {
         movie("One Piece Special - 3D2Y.mkv", "One Piece Special - 3D2Y", null);
         movie("Dragon Ball Z - Battle of Gods (2013 BluRay - 1080p DUAL AUDIO).mkv", "Dragon Ball Z - Battle of Gods", 2013);
         movie("h265 Nightcrawler 1080p.mkv", "Nightcrawler", null);
+        movie("Dragon.Ball.M01.Curse.Of.The.Blood.Rubies.1986.WEB.1080p.mkv", "Dragon Ball Curse Of The Blood Rubies", 1986);
+        movie("Dial.M.For.Murder.1954.mkv", "Dial M For Murder", 1954);
         movie("(2)The Girl Who Played with Fire (2009) 720p.mkv", "The Girl Who Played with Fire", 2009);
         movie("Das.Boot.German.DL.1080p.BluRay.x264.mkv", "Das Boot", null);
         movie("劇場版 ペンギン・ハイウェイ Penguin Highway (BD 1280x720 AVC).mp4", "Penguin Highway", null);
@@ -247,5 +249,11 @@ class ReleaseParserTest {
         assertTrue(ReleaseParser.isExtra("Dragon Ball Z - RF Extras - Trailer (1080p).mkv", List.of()));
         assertFalse(ReleaseParser.isExtra("Extras.S01E01.720p.mkv", List.of()));
         assertFalse(ReleaseParser.isExtra("Extras - 01 - Ben Stiller.mkv", List.of()));
+        assertTrue(ReleaseParser.isExtra("Z M05 2003 Toonami Commercial.mp4", List.of()));
+        assertTrue(ReleaseParser.isExtra("Z M03 Creditless OP-ED.mkv", List.of()));
+        assertTrue(ReleaseParser.isExtra("DB M02 Digest Trailer JPBD.mkv", List.of()));
+        assertTrue(ReleaseParser.isExtra("[Group] Show - NCOP1 [1080p].mkv", List.of()));
+        assertFalse(ReleaseParser.isExtra("Trailer.Park.Boys.S01E01.mkv", List.of()));
+        assertFalse(ReleaseParser.isExtra("Trailer Park Boys - 01.mkv", List.of()));
     }
 }

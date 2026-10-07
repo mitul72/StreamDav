@@ -148,6 +148,11 @@ public final class ReleaseParser {
     private static final Pattern TRAILING_RANGE = Pattern.compile("\\s+(\\d{1,4})-(\\d{1,4})$");
     /** {@code Movie - BROLY Extras - Trailer}: bonus material named after the film; "Extras.S01E01" is a show. */
     private static final Pattern EXTRAS_NAME = Pattern.compile("(?i)\\S[\\s._-]+(?:extras|bonus features?|featurettes?) ?- ");
+    /** Bonus clips inside a release: "Z M05 Toonami Commercial", "Z M03 Creditless OP-ED", "DB M02 Digest Trailer". */
+    private static final Pattern BONUS_WORD = Pattern.compile("(?i)(?<![a-z])(?:creditless|nc(?:op|ed)\\d*|commercials?"
+            + "|trailers?(?! park)|teasers?|tv ?spots?|making of)(?![a-z])");
+    /** {@code Dragon.Ball.Z.M07.Super.Android.13}: a film's number in its series, which search titles leave out. */
+    private static final Pattern MOVIE_INDEX = Pattern.compile("(?<=\\S) M\\d{1,2}(?= \\S)");
     private static final Pattern SAMPLE = Pattern.compile("(?i)(?<![a-z0-9])sample(?![a-z0-9])");
 
     private ReleaseParser() {
@@ -374,6 +379,10 @@ public final class ReleaseParser {
         if (SAMPLE.matcher(name).find() || EXTRAS_NAME.matcher(name).find()) {
             return true;
         }
+        String text = parseName(name).text();
+        if (BONUS_WORD.matcher(text).find() && !hasEpisodeMarker(text)) {
+            return true;
+        }
         return folders.stream().map(folder -> parseName(folder).text().toLowerCase(Locale.ROOT))
                 .anyMatch(EXTRAS_FOLDERS::contains);
     }
@@ -462,6 +471,7 @@ public final class ReleaseParser {
             }
             // "(1)The Girl With The Dragon Tattoo": a leading index orders a set of files.
             text = LEADING_INDEX.matcher(text).replaceFirst("");
+            text = MOVIE_INDEX.matcher(text).replaceFirst("");
             TitleAndYear fromFile = titleAndYear(text);
             Optional<TitleAndYear> release = nearestTitleFolder(folders)
                     .filter(folder -> RELEASE_TAG.matcher(folder).find()).map(ReleaseParser::titleAndYear)
