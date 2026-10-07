@@ -95,7 +95,8 @@
 
 .connect-view .header {
     -fx-padding: 36 40 8 40;
-    -fx-spacing: 4;
+    -fx-spacing: 16;
+    -fx-alignment: center-left;
 }
 
 .app-title {
@@ -364,4 +365,287 @@
 
 .player-error .label {
     -fx-text-alignment: center;
+}
+
+/* Library */
+
+.library-title {
+    -fx-font-size: 18px;
+    -fx-font-weight: bold;
+    -fx-text-fill: white;
+    -fx-padding: 0 12 0 6;
+}
+
+.tabs {
+    -fx-spacing: 2;
+    -fx-alignment: center-left;
+}
+
+.tabs .toggle-button {
+    -fx-background-color: transparent;
+    -fx-background-radius: 6;
+    -fx-text-fill: -sd-muted;
+    -fx-padding: 6 12;
+    -fx-cursor: hand;
+}
+
+.tabs .toggle-button:hover {
+    -fx-text-fill: white;
+}
+
+.tabs .toggle-button:selected {
+    -fx-background-color: rgba(255, 255, 255, 0.10);
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+}
+
+.library-status {
+    -fx-text-fill: -sd-muted;
+    -fx-font-size: 12px;
+    -fx-padding: 0 8 0 0;
+}
+
+.library-page,
+.library-page > .viewport,
+.shelf-scroll,
+.shelf-scroll > .viewport {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-padding: 0;
+}
+
+.shelves {
+    -fx-padding: 20 0 32 0;
+    -fx-spacing: 28;
+}
+
+.shelf-title {
+    -fx-font-size: 18px;
+    -fx-font-weight: bold;
+    -fx-text-fill: white;
+}
+
+.shelf-header {
+    -fx-padding: 0 28;
+}
+
+.shelf-scroll > .scroll-bar:horizontal {
+    -fx-background-color: transparent;
+    -fx-pref-height: 8;
+    -fx-padding: 0 28;
+}
+
+.shelf-scroll > .scroll-bar:horizontal > .track {
+    -fx-background-color: transparent;
+}
+
+.shelf-scroll > .scroll-bar:horizontal > .thumb {
+    -fx-background-color: rgba(255, 255, 255, 0.12);
+    -fx-background-radius: 4;
+}
+
+.shelf-scroll > .scroll-bar:horizontal > .increment-button,
+.shelf-scroll > .scroll-bar:horizontal > .decrement-button {
+    -fx-padding: 0;
+}
+
+.shelf-scroll > .scroll-bar:horizontal > .increment-button > .increment-arrow,
+.shelf-scroll > .scroll-bar:horizontal > .decrement-button > .decrement-arrow {
+    -fx-shape: null;
+    -fx-padding: 0;
+}
+
+.shelf-row {
+    -fx-padding: 4 28 10 28;
+}
+
+.poster-grid {
+    -fx-padding: 24 28 32 28;
+}
+
+.poster-card {
+    -fx-cursor: hand;
+    -fx-background-radius: 8;
+}
+
+.poster-card .poster {
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.45), 10, 0, 0, 3);
+}
+
+.poster-card:hover .poster,
+.poster-card:focused .poster {
+    -fx-border-color: -fx-accent;
+    -fx-border-width: 2;
+    -fx-border-radius: 6;
+}
+
+.poster-placeholder-text {
+    -fx-text-fill: rgba(255, 255, 255, 0.85);
+    -fx-font-size: 14px;
+    -fx-font-weight: bold;
+    -fx-text-alignment: center;
+}
+
+.card-title-text {
+    -fx-text-fill: white;
+    -fx-font-size: 13px;
+}
+
+.card-subtitle {
+    -fx-text-fill: -sd-muted;
+    -fx-font-size: 12px;
+}
+
+.empty-state {
+    -fx-padding: 40;
+}
+
+.empty-title {
+    -fx-font-size: 22px;
+    -fx-font-weight: bold;
+    -fx-text-fill: white;
+}
+
+.empty-state .hint {
+    -fx-font-size: 13px;
+    -fx-text-alignment: center;
+}
+
+/* Detail */
+
+.detail-view {
+    -fx-background-color: -fx-background;
+}
+
+.backdrop-fallback {
+    -fx-background-color: linear-gradient(to bottom right, #262b38, #16171b);
+}
+
+.hero-shade {
+    -fx-background-color: linear-gradient(to bottom, rgba(22, 23, 27, 0.25) 0%, rgba(22, 23, 27, 0.65) 55%, #16171b 100%),
+                          linear-gradient(to right, rgba(22, 23, 27, 0.85) 0%, transparent 70%);
+}
+
+.hero-content {
+    -fx-padding: 70 40 24 40;
+}
+
+.detail-poster {
+    -fx-effect: dropshadow(gaussian, rgba(0, 0, 0, 0.6), 18, 0, 0, 6);
+}
+
+.detail-title {
+    -fx-font-size: 32px;
+    -fx-font-weight: bold;
+    -fx-text-fill: white;
+}
+
+.detail-facts {
+    -fx-text-fill: #c9ced8;
+    -fx-font-size: 13px;
+}
+
+.detail-overview {
+    -fx-text-fill: #d5dbe6;
+    -fx-font-size: 14px;
+    -fx-line-spacing: 2;
+}
+
+.detail-actions {
+    -fx-padding: 8 0 0 0;
+    -fx-alignment: center-left;
+}
+
+.detail-actions .button.primary {
+    -fx-base: -fx-default-button;
+    -fx-text-fill: white;
+}
+
+.detail-actions .button .icon,
+.detail-actions .menu-button .icon {
+    -fx-fill: white;
+}
+
+.back-button {
+    -fx-background-color: rgba(0, 0, 0, 0.45);
+    -fx-background-radius: 16;
+    -fx-text-fill: white;
+    -fx-padding: 6 14 6 10;
+    -fx-cursor: hand;
+}
+
+.back-button .icon {
+    -fx-fill: white;
+}
+
+.back-button:hover {
+    -fx-background-color: rgba(0, 0, 0, 0.7);
+}
+
+StackPane > .back-button {
+    -fx-translate-x: 16;
+    -fx-translate-y: 14;
+}
+
+.episodes-section {
+    -fx-padding: 8 40 40 40;
+}
+
+.season-tabs .toggle-button {
+    -fx-background-color: #23262e;
+    -fx-background-radius: 16;
+    -fx-text-fill: #c9ced8;
+    -fx-padding: 5 14;
+    -fx-cursor: hand;
+}
+
+.season-tabs .toggle-button:selected {
+    -fx-background-color: -fx-accent;
+    -fx-text-fill: white;
+}
+
+.episode-row {
+    -fx-padding: 10;
+    -fx-background-radius: 8;
+    -fx-cursor: hand;
+}
+
+.episode-row:hover,
+.episode-row:focused {
+    -fx-background-color: #20232b;
+}
+
+.episode-row-compact {
+    -fx-padding: 8 10;
+}
+
+.episode-number {
+    -fx-min-width: 44;
+    -fx-pref-width: 44;
+    -fx-alignment: center;
+    -fx-padding: 6 0;
+    -fx-background-color: #23262e;
+    -fx-background-radius: 6;
+    -fx-text-fill: #c9ced8;
+    -fx-font-weight: bold;
+}
+
+.episode-still .poster-placeholder-text {
+    -fx-font-size: 12px;
+}
+
+.episode-title {
+    -fx-text-fill: white;
+    -fx-font-size: 14px;
+    -fx-font-weight: bold;
+}
+
+.episode-meta {
+    -fx-text-fill: -sd-muted;
+    -fx-font-size: 12px;
+}
+
+.episode-overview {
+    -fx-text-fill: #b4bac6;
+    -fx-font-size: 12px;
 }

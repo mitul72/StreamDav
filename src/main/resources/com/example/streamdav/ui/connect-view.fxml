@@ -16,10 +16,13 @@
 <BorderPane styleClass="connect-view" xmlns="http://javafx.com/javafx" xmlns:fx="http://javafx.com/fxml"
             fx:controller="com.example.streamdav.ui.ConnectController">
     <top>
-        <VBox styleClass="header">
-            <Label styleClass="app-title" text="StreamDav"/>
-            <Label styleClass="subtitle" text="Stream video and music from your WebDAV server"/>
-        </VBox>
+        <HBox styleClass="header">
+            <VBox spacing="4" HBox.hgrow="ALWAYS">
+                <Label styleClass="app-title" text="StreamDav"/>
+                <Label styleClass="subtitle" text="Stream video and music from your WebDAV server"/>
+            </VBox>
+            <Button fx:id="libraryButton" text="Library" onAction="#showLibrary"/>
+        </HBox>
     </top>
     <center>
         <HBox styleClass="content">

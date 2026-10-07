@@ -19,6 +19,9 @@
             fx:controller="com.example.streamdav.ui.BrowserController">
     <top>
         <HBox styleClass="toolbar">
+            <Button fx:id="libraryButton" styleClass="icon-button" onAction="#showLibrary">
+                <tooltip><Tooltip text="Library"/></tooltip>
+            </Button>
             <Button fx:id="backButton" styleClass="icon-button" onAction="#goBack">
                 <tooltip><Tooltip text="Back (Alt+Left)"/></tooltip>
             </Button>
@@ -33,6 +36,8 @@
             </Button>
             <MenuButton fx:id="menuButton" styleClass="icon-button">
                 <items>
+                    <MenuItem text="Add this folder to Library" onAction="#addCurrentFolderToLibrary"/>
+                    <SeparatorMenuItem/>
                     <MenuItem text="External player…" onAction="#configureExternalPlayer"/>
                     <SeparatorMenuItem/>
                     <MenuItem text="Disconnect" onAction="#disconnect"/>

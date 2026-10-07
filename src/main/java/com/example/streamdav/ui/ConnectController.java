@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Locale;
 
 public class ConnectController {
+    @FXML private Button libraryButton;
     @FXML private ListView<ServerProfile> savedServers;
     @FXML private Button removeServerButton;
     @FXML private TextField urlField;
@@ -46,6 +47,9 @@ public class ConnectController {
 
     void init(Navigator navigator) {
         this.navigator = navigator;
+        libraryButton.setGraphic(Icon.LIBRARY.create(18));
+        libraryButton.setVisible(navigator.hasLibrary());
+        libraryButton.setManaged(libraryButton.isVisible());
         rememberPasswordCheck.disableProperty().bind(saveServerCheck.selectedProperty().not());
         passwordHint.visibleProperty().bind(rememberPasswordCheck.selectedProperty().and(saveServerCheck.selectedProperty()));
         passwordHint.managedProperty().bind(passwordHint.visibleProperty());
@@ -124,9 +128,10 @@ public class ConnectController {
                 return;
             }
             setBusy(false, null);
+            String id = save ? navigator.settings().saveServer(name, root.toString(), username,
+                    rememberPassword ? password : "") : null;
             if (save) {
                 Settings settings = navigator.settings();
-                String id = settings.saveServer(name, root.toString(), username, rememberPassword ? password : "");
                 if (autoConnect) {
                     settings.setAutoConnect(id);
                 } else if (settings.autoConnectServer().filter(server -> server.id().equals(id)).isPresent()) {
@@ -134,7 +139,8 @@ public class ConnectController {
                 }
             }
             Connection connection = task.getValue();
-            navigator.showBrowser(connection.library(), name, connection.rootListing());
+            navigator.showBrowser(connection.library(), new Navigator.Session(id, name, root, username, password),
+                    connection.rootListing());
         });
         task.setOnFailed(event -> {
             if (pending != task) {
@@ -172,10 +178,17 @@ public class ConnectController {
     }
 
     @FXML
+    private void showLibrary() {
+        cancel();
+        navigator.showLibrary();
+    }
+
+    @FXML
     private void removeServer() {
         ServerProfile server = savedServers.getSelectionModel().getSelectedItem();
         if (server != null) {
             navigator.settings().removeServer(server);
+            navigator.serverRemoved(server.id());
             savedServers.getItems().remove(server);
         }
     }

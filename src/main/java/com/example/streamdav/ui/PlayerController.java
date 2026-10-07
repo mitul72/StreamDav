@@ -337,7 +337,7 @@ public class PlayerController {
             return;
         }
         shutdown();
-        navigator.returnToBrowser();
+        navigator.closePlayer();
     }
 
     private void seek(double seconds) {

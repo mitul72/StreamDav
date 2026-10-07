@@ -1,13 +1,18 @@
 package com.example.streamdav.ui;
 
+import com.example.streamdav.catalog.LibraryIndex;
 import com.example.streamdav.library.MediaLibrary;
 import com.example.streamdav.library.RemoteFile;
 import com.example.streamdav.player.Playback;
 import com.example.streamdav.player.Players;
+import com.example.streamdav.settings.AppDirs;
+import com.example.streamdav.settings.ServerProfile;
 import com.example.streamdav.settings.Settings;
+import com.example.streamdav.store.LibraryStore;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
 import javafx.scene.control.Alert;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.TextInputDialog;
 import javafx.stage.Stage;
@@ -16,45 +21,112 @@ import org.apache.logging.log4j.Logger;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.net.URI;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/** Owns the window and switches between the connect, browse and play screens. */
+/** Owns the window and switches between the library, connect, browse and play screens. */
 public final class Navigator {
     private static final Logger log = LogManager.getLogger(Navigator.class);
     private static final String APP_NAME = "StreamDav";
+
+    /**
+     * The server the browser is connected to.
+     *
+     * @param serverId null when the user chose not to save the server
+     */
+    record Session(String serverId, String name, URI url, String username, String password) {
+    }
 
     private final Stage stage;
     private final Settings settings;
     private final MediaLibrary.Connector connector;
     private final Players players;
     private final ExecutorService background = Executors.newVirtualThreadPerTaskExecutor();
+    private final ImageCache images = new ImageCache(AppDirs.cache().resolve("artwork"));
+    /** Connections to saved servers for playing library files, opened when first needed. */
+    private final Map<String, MediaLibrary> connections = new HashMap<>();
+    private final LibraryModel libraryModel;
 
     private MediaLibrary library;
-    private String serverName;
+    private Session session;
     private Parent browserView;
     private BrowserController browser;
+    private Parent libraryView;
+    private LibraryController libraryController;
     private PlayerController player;
+    /** The screen the player goes back to. */
+    private Parent beforePlayer;
+    private String titleBeforePlayer;
 
     public Navigator(Stage stage, Settings settings, MediaLibrary.Connector connector, Players players) {
         this.stage = stage;
         this.settings = settings;
         this.connector = connector;
         this.players = players;
+        this.libraryModel = openLibrary(settings, connector);
+    }
+
+    private static LibraryModel openLibrary(Settings settings, MediaLibrary.Connector connector) {
+        try {
+            return new LibraryModel(LibraryStore.open(AppDirs.data().resolve("library.db")), settings, connector);
+        } catch (IOException e) {
+            // The app still browses and plays without a library.
+            log.error("Could not open the library database", e);
+            return null;
+        }
     }
 
     public static String stylesheet() {
         return Objects.requireNonNull(Navigator.class.getResource("streamdav.css")).toExternalForm();
     }
 
-    /** Shows the first screen, connecting straight away if the user picked a server to autoconnect to. */
+    /**
+     * Shows the library when it has folders, updating it in the background; otherwise the connect screen,
+     * connecting straight away if the user picked a server to autoconnect to.
+     */
     public void start() {
+        if (hasLibrary()) {
+            showLibrary();
+            libraryModel.refresh();
+            return;
+        }
         ConnectController connect = showConnect();
         settings.autoConnectServer().ifPresent(connect::autoConnect);
+    }
+
+    /** Whether there's a library with folders in it to go back to. */
+    boolean hasLibrary() {
+        return libraryModel != null && libraryModel.hasSources();
+    }
+
+    void showLibrary() {
+        if (libraryModel == null) {
+            showError("The library isn't available", "Its database couldn't be opened; see the log for details.");
+            return;
+        }
+        if (libraryView == null) {
+            Loaded<LibraryController> view = load("library-view.fxml");
+            libraryController = view.controller();
+            libraryView = view.root();
+            libraryController.init(this, libraryModel, images);
+            libraryModel.load();
+        }
+        player = null;
+        show(libraryView, "Library — " + APP_NAME);
+        libraryController.focus();
+    }
+
+    void showDetail(LibraryIndex.Item item) {
+        DetailView detail = new DetailView(this, images, item);
+        show(detail.root(), item.title() + " — " + APP_NAME);
+        detail.focus();
     }
 
     ConnectController showConnect() {
@@ -62,6 +134,7 @@ public final class Navigator {
             library.close();
         }
         library = null;
+        session = null;
         browser = null;
         browserView = null;
         Loaded<ConnectController> view = load("connect-view.fxml");
@@ -70,37 +143,68 @@ public final class Navigator {
         return view.controller();
     }
 
-    void showBrowser(MediaLibrary library, String serverName, List<RemoteFile> rootListing) {
+    void showBrowser(MediaLibrary library, Session session, List<RemoteFile> rootListing) {
         this.library = library;
-        this.serverName = serverName;
+        this.session = session;
         Loaded<BrowserController> view = load("browser-view.fxml");
         browser = view.controller();
         browserView = view.root();
-        browser.init(this, library, serverName, rootListing);
+        browser.init(this, library, session.name(), rootListing);
         returnToBrowser();
     }
 
     void returnToBrowser() {
         player = null;
-        show(browserView, serverName + " — " + APP_NAME);
+        show(browserView, session.name() + " — " + APP_NAME);
         browser.focus();
     }
 
-    /** Plays in the built-in player when it supports the format, otherwise hands off to an external player. */
+    /** Plays a file from the browser's server. */
     void play(RemoteFile file) {
+        play(file, library);
+    }
+
+    /** Plays a library file, connecting to its server if need be. */
+    void play(LibraryIndex.FileRef file) {
+        connection(file.serverId()).ifPresent(server -> play(file.file(), server));
+    }
+
+    /** Plays in the built-in player when it supports the format, otherwise hands off to an external player. */
+    private void play(RemoteFile file, MediaLibrary from) {
         Optional<Playback.Factory> engine = players.forFile(file.name());
         if (engine.isEmpty()) {
-            openExternally(file);
+            openExternally(file, from);
             return;
         }
+        beforePlayer = stage.getScene().getRoot();
+        titleBeforePlayer = stage.getTitle();
         Loaded<PlayerController> view = load("player-view.fxml");
         player = view.controller();
-        player.init(this, file, engine.get(), library.streamUrl(file));
+        player.init(this, file, engine.get(), from.streamUrl(file));
         show(view.root(), file.name() + " — " + APP_NAME);
         player.focus();
     }
 
+    /** Goes back to the screen the player was opened from. */
+    void closePlayer() {
+        player = null;
+        if (beforePlayer == browserView && browser != null) {
+            returnToBrowser();
+            return;
+        }
+        show(beforePlayer, titleBeforePlayer);
+        beforePlayer.requestFocus();
+    }
+
     void openExternally(RemoteFile file) {
+        openExternally(file, library);
+    }
+
+    void openExternally(LibraryIndex.FileRef file) {
+        connection(file.serverId()).ifPresent(server -> openExternally(file.file(), server));
+    }
+
+    private void openExternally(RemoteFile file, MediaLibrary from) {
         Optional<String> command = settings.externalPlayerCommand().or(ExternalPlayer::detect);
         if (command.isEmpty()) {
             command = promptForExternalPlayer("No external player was found. Install mpv or VLC, "
@@ -110,12 +214,68 @@ public final class Navigator {
             return;
         }
         try {
-            ExternalPlayer.launch(command.get(), library.streamUrl(file));
+            ExternalPlayer.launch(command.get(), from.streamUrl(file));
         } catch (IOException e) {
             log.warn("Could not start external player '{}'", command.get(), e);
-            Alert alert = new Alert(Alert.AlertType.ERROR, e.getMessage());
-            alert.setHeaderText("Couldn't start the external player");
-            showDialog(alert);
+            showError("Couldn't start the external player", e.getMessage());
+        }
+    }
+
+    private Optional<MediaLibrary> connection(String serverId) {
+        MediaLibrary open = connections.get(serverId);
+        if (open != null) {
+            return Optional.of(open);
+        }
+        try {
+            MediaLibrary server = libraryModel.open(serverId);
+            connections.put(serverId, server);
+            return Optional.of(server);
+        } catch (IOException e) {
+            log.warn("Could not open server {}", serverId, e);
+            showError("Couldn't connect to the server", e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    /**
+     * Adds a folder of the connected server to the library. The library scans in the background, so the server
+     * has to be saved with its password.
+     */
+    void addToLibrary(URI folder, String name) {
+        if (libraryModel == null) {
+            showError("The library isn't available", "Its database couldn't be opened; see the log for details.");
+            return;
+        }
+        if (session.serverId() == null) {
+            showError("Save this server first",
+                    "The library scans its folders in the background, so the server needs to be saved. Connect "
+                            + "again with “Save this server” ticked.");
+            return;
+        }
+        Optional<ServerProfile> saved = settings.servers().stream()
+                .filter(server -> server.id().equals(session.serverId())).findFirst();
+        if (saved.isPresent() && !session.username().isEmpty() && saved.get().password().isEmpty()) {
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                    "The library scans this server in the background, so StreamDav needs to remember its password. "
+                            + "It's stored unencrypted in your user preferences.", ButtonType.OK, ButtonType.CANCEL);
+            confirm.setHeaderText("Remember the password for " + session.name() + "?");
+            if (showDialog(confirm).filter(ButtonType.OK::equals).isEmpty()) {
+                return;
+            }
+            settings.saveServer(saved.get().name(), saved.get().url(), saved.get().username(), session.password());
+        }
+        libraryModel.addSource(session.serverId(), folder, name);
+        showLibrary();
+    }
+
+    /** Forgets a removed server's library folders and connection. */
+    void serverRemoved(String serverId) {
+        if (libraryModel != null) {
+            libraryModel.removeServer(serverId);
+        }
+        MediaLibrary open = connections.remove(serverId);
+        if (open != null) {
+            open.close();
         }
     }
 
@@ -138,7 +298,13 @@ public final class Navigator {
         return settings.externalPlayerCommand().or(ExternalPlayer::detect);
     }
 
-    private <R> Optional<R> showDialog(Dialog<R> dialog) {
+    void showError(String header, String message) {
+        Alert alert = new Alert(Alert.AlertType.ERROR, message);
+        alert.setHeaderText(header);
+        showDialog(alert);
+    }
+
+    <R> Optional<R> showDialog(Dialog<R> dialog) {
         dialog.initOwner(stage);
         dialog.getDialogPane().getStylesheets().add(stylesheet());
         return dialog.showAndWait();
@@ -168,6 +334,11 @@ public final class Navigator {
         if (library != null) {
             library.close();
         }
+        connections.values().forEach(MediaLibrary::close);
+        if (libraryModel != null) {
+            libraryModel.close();
+        }
+        images.close();
         background.shutdownNow();
     }
 

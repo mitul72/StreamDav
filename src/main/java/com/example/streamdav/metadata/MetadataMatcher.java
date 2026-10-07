@@ -182,7 +182,8 @@ public final class MetadataMatcher {
         return 1 - (double) distance / Math.max(left.length(), right.length());
     }
 
-    static String normalize(String title) {
+    /** Lower case, without accents or punctuation: how titles are compared. */
+    public static String normalize(String title) {
         String decomposed = Normalizer.normalize(title, Normalizer.Form.NFKD).replaceAll("\\p{M}", "");
         return decomposed.toLowerCase(Locale.ROOT)
                 .replace("&", " and ").replace('×', 'x')

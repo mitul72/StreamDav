@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.MenuButton?>
+<?import javafx.scene.control.MenuItem?>
+<?import javafx.scene.control.ProgressIndicator?>
+<?import javafx.scene.control.SeparatorMenuItem?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.control.ToggleButton?>
+<?import javafx.scene.control.ToggleGroup?>
+<?import javafx.scene.control.Tooltip?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.Region?>
+<?import javafx.scene.layout.StackPane?>
+
+<BorderPane fx:id="root" styleClass="library-view" xmlns="http://javafx.com/javafx" xmlns:fx="http://javafx.com/fxml"
+            fx:controller="com.example.streamdav.ui.LibraryController">
+    <fx:define>
+        <ToggleGroup fx:id="tabs"/>
+    </fx:define>
+    <top>
+        <HBox styleClass="toolbar">
+            <Label styleClass="library-title" text="Library"/>
+            <HBox styleClass="tabs">
+                <ToggleButton fx:id="homeTab" text="Home" toggleGroup="$tabs" selected="true"/>
+                <ToggleButton fx:id="moviesTab" text="Movies" toggleGroup="$tabs"/>
+                <ToggleButton fx:id="showsTab" text="TV Shows" toggleGroup="$tabs"/>
+                <ToggleButton fx:id="animeTab" text="Anime" toggleGroup="$tabs"/>
+            </HBox>
+            <Region HBox.hgrow="ALWAYS"/>
+            <ProgressIndicator fx:id="busyIndicator" styleClass="small-progress"/>
+            <Label fx:id="statusLabel" styleClass="library-status" minWidth="0"/>
+            <TextField fx:id="searchField" styleClass="filter-field" promptText="Search" prefColumnCount="12"/>
+            <Button fx:id="refreshButton" styleClass="icon-button" onAction="#refresh">
+                <tooltip><Tooltip text="Update library (F5)"/></tooltip>
+            </Button>
+            <Button fx:id="serversButton" styleClass="icon-button" onAction="#showServers">
+                <tooltip><Tooltip text="Servers and files"/></tooltip>
+            </Button>
+            <MenuButton fx:id="menuButton" styleClass="icon-button">
+                <items>
+                    <MenuItem text="Library folders…" onAction="#manageFolders"/>
+                    <MenuItem text="TMDB API key…" onAction="#configureTmdb"/>
+                    <SeparatorMenuItem/>
+                    <MenuItem text="External player…" onAction="#configureExternalPlayer"/>
+                </items>
+            </MenuButton>
+        </HBox>
+    </top>
+    <center>
+        <StackPane fx:id="content"/>
+    </center>
+</BorderPane>

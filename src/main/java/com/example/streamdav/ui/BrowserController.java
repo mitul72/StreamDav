@@ -51,6 +51,7 @@ public class BrowserController {
             .thenComparing(RemoteFile::name, NaturalOrder.INSTANCE);
 
     @FXML private BorderPane root;
+    @FXML private Button libraryButton;
     @FXML private Button backButton;
     @FXML private Button upButton;
     @FXML private HBox breadcrumbs;
@@ -80,6 +81,7 @@ public class BrowserController {
         this.navigator = navigator;
         this.library = library;
         this.serverName = serverName;
+        libraryButton.setGraphic(Icon.LIBRARY.create(20));
         backButton.setGraphic(Icon.BACK.create(20));
         upButton.setGraphic(Icon.UP.create(20));
         refreshButton.setGraphic(Icon.REFRESH.create(20));
@@ -163,15 +165,18 @@ public class BrowserController {
         TableRow<RemoteFile> row = new TableRow<>();
         MenuItem open = new MenuItem();
         MenuItem external = new MenuItem("Play in external player");
+        MenuItem addToLibrary = new MenuItem("Add to Library");
         MenuItem copyLink = new MenuItem("Copy link");
-        ContextMenu menu = new ContextMenu(open, external, new SeparatorMenuItem(), copyLink);
+        ContextMenu menu = new ContextMenu(open, external, addToLibrary, new SeparatorMenuItem(), copyLink);
         menu.setOnShowing(event -> {
             RemoteFile file = row.getItem();
             open.setText(file.directory() ? "Open" : "Play");
             open.setDisable(!file.directory() && !MediaKind.of(file.name()).isMedia());
             external.setVisible(!file.directory());
+            addToLibrary.setVisible(file.directory());
         });
         open.setOnAction(event -> open(row.getItem()));
+        addToLibrary.setOnAction(event -> navigator.addToLibrary(row.getItem().uri(), row.getItem().name()));
         external.setOnAction(event -> navigator.openExternally(row.getItem()));
         copyLink.setOnAction(event -> copyLink(row.getItem()));
         row.contextMenuProperty().bind(Bindings.when(row.emptyProperty()).then((ContextMenu) null).otherwise(menu));
@@ -221,6 +226,16 @@ public class BrowserController {
     private void refresh() {
         RemoteFile selected = table.getSelectionModel().getSelectedItem();
         load(current, selected == null ? null : selected.uri());
+    }
+
+    @FXML
+    private void showLibrary() {
+        navigator.showLibrary();
+    }
+
+    @FXML
+    private void addCurrentFolderToLibrary() {
+        navigator.addToLibrary(current, atRoot() ? serverName : folderName(current));
     }
 
     @FXML
