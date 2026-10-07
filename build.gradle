@@ -23,8 +23,8 @@ tasks.withType(JavaCompile).configureEach {
     options.release = 25
 }
 
-// JavaFX loads native libraries, and the app calls libmpv through the FFM API.
-def nativeAccessArgs = ['--enable-native-access=javafx.graphics,javafx.media,com.example.streamdav']
+// JavaFX and SQLite load native libraries, and the app calls libmpv through the FFM API.
+def nativeAccessArgs = ['--enable-native-access=javafx.graphics,javafx.media,org.xerial.sqlitejdbc,com.example.streamdav']
 
 application {
     mainModule = 'com.example.streamdav'
@@ -40,6 +40,7 @@ javafx {
 dependencies {
     implementation 'org.apache.logging.log4j:log4j-core:2.26.1'
     implementation 'org.apache.logging.log4j:log4j-api:2.26.1'
+    implementation 'org.xerial:sqlite-jdbc:3.53.4.0'
     testImplementation platform('org.junit:junit-bom:6.1.3')
     testImplementation 'org.junit.jupiter:junit-jupiter'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
