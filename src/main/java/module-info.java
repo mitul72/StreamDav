@@ -1,6 +1,7 @@
 module com.example.streamdav {
     requires javafx.controls;
     requires javafx.fxml;
+    requires java.prefs;
     requires org.apache.logging.log4j;
 
 
