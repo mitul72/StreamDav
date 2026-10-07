@@ -214,11 +214,13 @@ public class PlayerController {
     }
 
     private void updatePosition(Duration time) {
-        if (!seekSlider.isValueChanging()) {
-            updatingSeekSlider = true;
-            seekSlider.setValue(time.toSeconds());
-            updatingSeekSlider = false;
+        // While the user drags the slider, the label previews the time under the thumb; leave both alone.
+        if (seekSlider.isValueChanging()) {
+            return;
         }
+        updatingSeekSlider = true;
+        seekSlider.setValue(time.toSeconds());
+        updatingSeekSlider = false;
         timeLabel.setText(Format.duration(time) + " / " + totalTime());
     }
 
