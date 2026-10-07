@@ -62,6 +62,40 @@ class SettingsTest {
     }
 
     @Test
+    void savingReturnsAStableId() {
+        String id = settings.saveServer("NAS", "https://nas.local/", "me", "");
+        assertEquals(id, settings.saveServer("NAS renamed", "https://nas.local/", "me", "secret"));
+        assertEquals(id, settings.servers().getFirst().id());
+    }
+
+    @Test
+    void autoConnectsToAtMostOneServer() {
+        String nas = settings.saveServer("NAS", "https://nas.local/", "me", "secret");
+        String office = settings.saveServer("Office", "https://office.example/", "", "");
+        assertEquals(Optional.empty(), settings.autoConnectServer());
+
+        settings.setAutoConnect(nas);
+        settings.setAutoConnect(office);
+
+        assertEquals(office, settings.autoConnectServer().orElseThrow().id());
+        assertEquals(List.of(false, true), settings.servers().stream().map(ServerProfile::autoConnect).toList());
+
+        settings.setAutoConnect(null);
+        assertEquals(Optional.empty(), settings.autoConnectServer());
+    }
+
+    @Test
+    void removingTheAutoConnectServerTurnsAutoConnectOff() {
+        String nas = settings.saveServer("NAS", "https://nas.local/", "me", "secret");
+        settings.setAutoConnect(nas);
+
+        settings.removeServer(settings.servers().getFirst());
+        settings.saveServer("NAS", "https://nas.local/", "me", "secret");
+
+        assertEquals(Optional.empty(), settings.autoConnectServer());
+    }
+
+    @Test
     void blankExternalPlayerClearsTheSetting() {
         settings.setExternalPlayerCommand("  mpv --fs ");
         assertEquals(Optional.of("mpv --fs"), settings.externalPlayerCommand());

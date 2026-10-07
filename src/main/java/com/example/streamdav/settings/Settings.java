@@ -22,6 +22,7 @@ public final class Settings {
     private static final String SERVERS = "servers";
     private static final String RESUME = "resume";
     private static final String EXTERNAL_PLAYER = "externalPlayer";
+    private static final String AUTO_CONNECT = "autoConnect";
 
     private final Preferences prefs;
 
@@ -35,12 +36,13 @@ public final class Settings {
 
     public List<ServerProfile> servers() {
         Preferences servers = prefs.node(SERVERS);
+        String autoConnect = prefs.get(AUTO_CONNECT, "");
         List<ServerProfile> result = new ArrayList<>();
         try {
             for (String id : servers.childrenNames()) {
                 Preferences node = servers.node(id);
                 result.add(new ServerProfile(id, node.get("name", ""), node.get("url", ""),
-                        node.get("username", ""), node.get("password", "")));
+                        node.get("username", ""), node.get("password", ""), id.equals(autoConnect)));
             }
         } catch (BackingStoreException e) {
             log.warn("Could not read saved servers", e);
@@ -49,8 +51,8 @@ public final class Settings {
         return result;
     }
 
-    /** Saves a server, replacing any saved server with the same URL and username. */
-    public void saveServer(String name, String url, String username, String password) {
+    /** Saves a server, replacing any saved server with the same URL and username, and returns its id. */
+    public String saveServer(String name, String url, String username, String password) {
         String id = servers().stream()
                 .filter(server -> server.url().equals(url) && server.username().equals(username))
                 .map(ServerProfile::id)
@@ -66,15 +68,34 @@ public final class Settings {
             node.put("password", password);
         }
         flush();
+        return id;
     }
 
     public void removeServer(ServerProfile server) {
         try {
             prefs.node(SERVERS).node(server.id()).removeNode();
+            if (server.id().equals(prefs.get(AUTO_CONNECT, null))) {
+                prefs.remove(AUTO_CONNECT);
+            }
             flush();
         } catch (BackingStoreException e) {
             log.warn("Could not remove saved server {}", server.name(), e);
         }
+    }
+
+    /** The saved server to connect to at startup, if the user picked one. */
+    public Optional<ServerProfile> autoConnectServer() {
+        return servers().stream().filter(ServerProfile::autoConnect).findFirst();
+    }
+
+    /** Makes the server with this id the one to connect to at startup; {@code null} turns autoconnect off. */
+    public void setAutoConnect(String serverId) {
+        if (serverId == null) {
+            prefs.remove(AUTO_CONNECT);
+        } else {
+            prefs.put(AUTO_CONNECT, serverId);
+        }
+        flush();
     }
 
     public Optional<String> externalPlayerCommand() {
