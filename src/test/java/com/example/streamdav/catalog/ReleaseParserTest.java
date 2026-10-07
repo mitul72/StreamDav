@@ -243,5 +243,9 @@ class ReleaseParserTest {
         assertTrue(ReleaseParser.isExtra("trailer.mkv", List.of("Movie", "Featurettes")));
         assertFalse(ReleaseParser.isExtra("The.Matrix.1999.mkv", List.of("Movies")));
         assertFalse(ReleaseParser.isExtra("Sampled.Lives.2020.mkv", List.of()));
+        assertTrue(ReleaseParser.isExtra("Dragon Ball Super - BROLY Extras - SP01, PV Collection (1080p).mp4", List.of()));
+        assertTrue(ReleaseParser.isExtra("Dragon Ball Z - RF Extras - Trailer (1080p).mkv", List.of()));
+        assertFalse(ReleaseParser.isExtra("Extras.S01E01.720p.mkv", List.of()));
+        assertFalse(ReleaseParser.isExtra("Extras - 01 - Ben Stiller.mkv", List.of()));
     }
 }

@@ -146,6 +146,8 @@ public final class ReleaseParser {
     private static final Pattern CJK_THEN_LATIN =
             Pattern.compile("^[\\p{IsHan}\\p{IsHiragana}\\p{IsKatakana}・ー\\s]+ (\\p{IsLatin}.*\\p{IsLatin}{3}.*)$");
     private static final Pattern TRAILING_RANGE = Pattern.compile("\\s+(\\d{1,4})-(\\d{1,4})$");
+    /** {@code Movie - BROLY Extras - Trailer}: bonus material named after the film; "Extras.S01E01" is a show. */
+    private static final Pattern EXTRAS_NAME = Pattern.compile("(?i)\\S[\\s._-]+(?:extras|bonus features?|featurettes?) ?- ");
     private static final Pattern SAMPLE = Pattern.compile("(?i)(?<![a-z0-9])sample(?![a-z0-9])");
 
     private ReleaseParser() {
@@ -368,7 +370,8 @@ public final class ReleaseParser {
 
     /** True for samples and bonus material, which shouldn't appear in the library. */
     public static boolean isExtra(String fileName, List<String> folders) {
-        if (SAMPLE.matcher(stripExtension(fileName)).find()) {
+        String name = stripExtension(fileName);
+        if (SAMPLE.matcher(name).find() || EXTRAS_NAME.matcher(name).find()) {
             return true;
         }
         return folders.stream().map(folder -> parseName(folder).text().toLowerCase(Locale.ROOT))
