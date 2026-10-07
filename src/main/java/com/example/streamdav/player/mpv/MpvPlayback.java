@@ -2,6 +2,7 @@ package com.example.streamdav.player.mpv;
 
 import com.example.streamdav.player.Playback;
 import com.example.streamdav.player.Track;
+import javafx.animation.AnimationTimer;
 import javafx.application.Platform;
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.DoubleProperty;
@@ -33,7 +34,6 @@ import java.util.Locale;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Semaphore;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -92,7 +92,13 @@ public final class MpvPlayback implements Playback {
     // one. At most three buffers exist: one being rendered, one ready and one being copied.
     private final AtomicReference<Frame> ready = new AtomicReference<>();
     private final Queue<Frame> spare = new ConcurrentLinkedQueue<>();
-    private final AtomicBoolean framePending = new AtomicBoolean();
+    /** Shows the newest ready frame once per JavaFX pulse; frames rendered faster than that are skipped. */
+    private final AnimationTimer frameTimer = new AnimationTimer() {
+        @Override
+        public void handle(long now) {
+            showFrame();
+        }
+    };
     private final AtomicReference<Double> pendingPosition = new AtomicReference<>();
     /** The buffer being rendered into; only touched by the render thread. */
     private Frame back;
@@ -227,6 +233,7 @@ public final class MpvPlayback implements Playback {
             }
         });
 
+        frameTimer.start();
         eventThread = Thread.ofPlatform().daemon().name("mpv-events").start(this::eventLoop);
         renderThread = Thread.ofPlatform().daemon().name("mpv-render").start(this::renderLoop);
         mpv.command(handle, "loadfile", url.toString());
@@ -366,9 +373,6 @@ public final class MpvPlayback implements Playback {
             stats.rendered(renderEnd - renderStart, System.nanoTime() - renderEnd, size);
             // Publish the frame; if the previous one was never shown, reuse its buffer for the next frame.
             back = ready.getAndSet(back);
-            if (framePending.compareAndSet(false, true)) {
-                onFx(this::showFrame);
-            }
         }
     }
 
@@ -390,7 +394,6 @@ public final class MpvPlayback implements Playback {
     // JavaFX thread
 
     private void showFrame() {
-        framePending.set(false);
         if (closed) {
             return;
         }
@@ -579,6 +582,7 @@ public final class MpvPlayback implements Playback {
             return;
         }
         closed = true;
+        frameTimer.stop();
         if (handle.equals(MemorySegment.NULL)) {
             arena.close();
             return;
