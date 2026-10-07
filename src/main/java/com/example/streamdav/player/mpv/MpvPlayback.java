@@ -3,6 +3,7 @@ package com.example.streamdav.player.mpv;
 import com.example.streamdav.player.Playback;
 import com.example.streamdav.player.Track;
 import javafx.animation.AnimationTimer;
+import javafx.animation.PauseTransition;
 import javafx.application.Platform;
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.DoubleProperty;
@@ -109,6 +110,8 @@ public final class MpvPlayback implements Playback {
     private volatile long videoHeight;
     private volatile double viewWidth = MAX_WIDTH;
     private volatile double viewHeight = MAX_HEIGHT;
+    private final PauseTransition resizeSettle = new PauseTransition(Duration.millis(250));
+    private boolean viewSized;
 
     private final FrameStats stats = new FrameStats();
 
@@ -168,14 +171,11 @@ public final class MpvPlayback implements Playback {
         view.getChildren().add(imageView);
         view.setMinSize(0, 0);
         // A new size needs a new frame, even while paused, or the old one is stretched until playback moves on.
-        view.widthProperty().addListener((observable, old, width) -> {
-            viewWidth = width.doubleValue() * outputScale();
-            renderRequests.release();
-        });
-        view.heightProperty().addListener((observable, old, height) -> {
-            viewHeight = height.doubleValue() * outputScale();
-            renderRequests.release();
-        });
+        // While a window is being dragged to a new size, keep rendering at the old size (the GPU scales it) and
+        // switch once the size settles, rather than allocating new buffers for every intermediate size.
+        resizeSettle.setOnFinished(event -> applyViewSize());
+        view.widthProperty().addListener(observable -> onViewResized());
+        view.heightProperty().addListener(observable -> onViewResized());
 
         handle = mpv.create();
         if (handle.equals(MemorySegment.NULL)) {
@@ -468,6 +468,22 @@ public final class MpvPlayback implements Playback {
         }
     }
 
+    private void onViewResized() {
+        if (!viewSized) {
+            // The first layout: use it straight away.
+            viewSized = true;
+            applyViewSize();
+        } else {
+            resizeSettle.playFromStart();
+        }
+    }
+
+    private void applyViewSize() {
+        viewWidth = view.getWidth() * outputScale();
+        viewHeight = view.getHeight() * outputScale();
+        renderRequests.release();
+    }
+
     private double outputScale() {
         return view.getScene() != null && view.getScene().getWindow() != null
                 ? view.getScene().getWindow().getOutputScaleX()
@@ -583,6 +599,7 @@ public final class MpvPlayback implements Playback {
         }
         closed = true;
         frameTimer.stop();
+        resizeSettle.stop();
         if (handle.equals(MemorySegment.NULL)) {
             arena.close();
             return;
