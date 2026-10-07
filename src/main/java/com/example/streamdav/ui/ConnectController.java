@@ -88,6 +88,10 @@ public class ConnectController {
 
     @FXML
     private void connect() {
+        // Double-clicking a saved server or pressing Enter can ask again while a connection is underway.
+        if (pending != null) {
+            return;
+        }
         URI root;
         try {
             root = parseServerUrl(urlField.getText());
@@ -110,6 +114,9 @@ public class ConnectController {
             }
         };
         task.setOnSucceeded(event -> {
+            if (pending != task) {
+                return;
+            }
             setBusy(false, null);
             if (save) {
                 Settings settings = navigator.settings();
@@ -124,10 +131,17 @@ public class ConnectController {
             navigator.showBrowser(connection.library(), name, connection.rootListing());
         });
         task.setOnFailed(event -> {
+            if (pending != task) {
+                return;
+            }
             setBusy(false, null);
             statusLabel.setText(Errors.describe(task.getException()));
         });
-        task.setOnCancelled(event -> setBusy(false, null));
+        task.setOnCancelled(event -> {
+            if (pending == task) {
+                setBusy(false, null);
+            }
+        });
         pending = task;
         setBusy(true, "Connecting to " + name + "…");
         navigator.background().execute(task);
