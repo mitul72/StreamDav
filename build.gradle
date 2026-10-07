@@ -46,6 +46,22 @@ dependencies {
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
+// Release builds carry a TMDB key so users needn't get their own. It comes from the build environment
+// (-PtmdbApiKey=... or TMDB_API_KEY, a CI secret for releases) and only ever lands in build/, never in the source.
+def tmdbApiKey = providers.gradleProperty('tmdbApiKey').orElse(providers.environmentVariable('TMDB_API_KEY')).orElse('')
+def generateApiKeys = tasks.register('generateApiKeys') {
+    def output = layout.buildDirectory.dir('generated/api-keys')
+    def key = tmdbApiKey
+    inputs.property('tmdbApiKey', key)
+    outputs.dir(output)
+    doLast {
+        def file = output.get().file('com/example/streamdav/metadata/api-keys.properties').asFile
+        file.parentFile.mkdirs()
+        file.text = key.get().isBlank() ? '' : "tmdb=${key.get().strip()}\n"
+    }
+}
+sourceSets.main.resources.srcDir(generateApiKeys)
+
 test {
     useJUnitPlatform()
     jvmArgs '--enable-native-access=ALL-UNNAMED'
