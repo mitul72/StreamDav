@@ -34,8 +34,9 @@ public final class StreamProxy implements AutoCloseable {
     private static final Logger log = LogManager.getLogger(StreamProxy.class);
     private static final String CONTEXT = "/stream/";
     private static final List<String> REQUEST_HEADERS = List.of("Range", "If-Range");
+    // Content-Encoding goes along with the bytes; dropping it would hand players compressed data as media.
     private static final List<String> RESPONSE_HEADERS =
-            List.of("Content-Type", "Content-Range", "Accept-Ranges", "ETag", "Last-Modified");
+            List.of("Content-Type", "Content-Encoding", "Content-Range", "Accept-Ranges", "ETag", "Last-Modified");
 
     private record Target(URI uri, HttpClient client, Optional<String> authorization) {
     }
@@ -106,6 +107,8 @@ public final class StreamProxy implements AutoCloseable {
                 request.header(name, value);
             }
         }
+        // Ranges are byte offsets into the file, so ask for it as stored, not compressed.
+        request.header("Accept-Encoding", "identity");
         target.authorization().ifPresent(value -> request.header("Authorization", value));
 
         HttpResponse<InputStream> response;

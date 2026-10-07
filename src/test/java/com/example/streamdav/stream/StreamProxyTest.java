@@ -148,6 +148,27 @@ class StreamProxyTest {
     }
 
     @Test
+    void asksForUncompressedDataAndKeepsAnyEncodingTheServerUsesAnyway() throws Exception {
+        java.util.concurrent.atomic.AtomicReference<String> acceptEncoding = new java.util.concurrent.atomic.AtomicReference<>();
+        byte[] gzipped = {0x1f, (byte) 0x8b, 8, 0};
+        upstream.createContext("/gzip/", exchange -> {
+            try (exchange) {
+                acceptEncoding.set(exchange.getRequestHeaders().getFirst("Accept-Encoding"));
+                exchange.getResponseHeaders().set("Content-Encoding", "gzip");
+                exchange.sendResponseHeaders(200, gzipped.length);
+                exchange.getResponseBody().write(gzipped);
+            }
+        });
+        URI url = proxy.publish(remote.resolve("/gzip/clip.mp4"), client, Optional.empty());
+
+        HttpResponse<byte[]> response = send(HttpRequest.newBuilder(url));
+
+        assertEquals("identity", acceptEncoding.get());
+        assertEquals("gzip", response.headers().firstValue("Content-Encoding").orElseThrow());
+        assertArrayEquals(gzipped, response.body());
+    }
+
+    @Test
     void reportsUnreachableServersAsBadGateway() throws Exception {
         int unusedPort;
         try (ServerSocket socket = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
