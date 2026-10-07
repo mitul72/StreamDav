@@ -176,7 +176,10 @@ public class PlayerController {
     private void onDurationChanged(Duration total) {
         seekSlider.setDisable(!isKnown(total));
         if (isKnown(total)) {
+            // A shorter estimate clamps the slider's value; that's not the user seeking, so don't seek.
+            updatingSeekSlider = true;
             seekSlider.setMax(total.toSeconds());
+            updatingSeekSlider = false;
         }
         updatePosition(playback.positionProperty().get());
     }
