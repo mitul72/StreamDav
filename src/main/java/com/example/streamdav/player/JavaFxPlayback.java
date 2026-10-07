@@ -156,9 +156,13 @@ public final class JavaFxPlayback implements Playback {
         }
         if (status.get() == Status.ENDED) {
             player.seek(Duration.ZERO);
-            status.set(Status.PAUSED);
         }
         player.play();
+        // MediaPlayer stays PLAYING at the end of the media (and ignores pause there), so replaying fires no
+        // status change; report it ourselves.
+        if (player.getStatus() == MediaPlayer.Status.PLAYING) {
+            status.set(Status.PLAYING);
+        }
     }
 
     @Override
