@@ -75,6 +75,11 @@ take without more evidence. `493-498 & 500-507` (two ranges) isn't supported eit
 Turkish `2.Sezon 7.Bolum`, and in general markers where the number comes before the word. Add them as libraries
 need them.
 
+### Alternative titles and stray tags in film names
+`Dragon Ball Z - Resurrection 'F' aka Frieza (2015)` keeps the "aka" alternative, and `The.Social.Network.KP.HDR.2160p`
+keeps the unknown `KP` tag, so neither matches. Splitting on ` aka ` and treating short all-caps tokens right before
+the release tags as tags would fix both.
+
 ### Whole name in brackets
 `[ Show S02E10 1080p WEB-DL ]` is read as a bracketed group and not parsed.
 
