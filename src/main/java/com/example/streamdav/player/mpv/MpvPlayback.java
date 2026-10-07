@@ -192,8 +192,15 @@ public final class MpvPlayback implements Playback {
             return;
         }
         mpv.requestLogMessages(handle, "warn");
-        renderContext = mpv.createSoftwareRenderContext(handle);
-        mpv.setUpdateCallback(renderContext, renderRequests::release, arena);
+        try {
+            renderContext = mpv.createSoftwareRenderContext(handle);
+            mpv.setUpdateCallback(renderContext, renderRequests::release, arena);
+        } catch (RuntimeException e) {
+            // dispose() still tears down whatever was created.
+            log.warn("Could not set up mpv's software renderer", e);
+            fail("The built-in player couldn't display video.");
+            return;
+        }
         observe("time-pos", LibMpv.FORMAT_DOUBLE);
         observe("duration", LibMpv.FORMAT_DOUBLE);
         observe("pause", LibMpv.FORMAT_FLAG);
@@ -552,6 +559,7 @@ public final class MpvPlayback implements Playback {
         }
         closed = true;
         if (handle.equals(MemorySegment.NULL)) {
+            arena.close();
             return;
         }
         // Stop both threads before tearing down: the render context must be freed before the core is destroyed,
@@ -574,13 +582,20 @@ public final class MpvPlayback implements Playback {
         arena.close();
     }
 
+    /** Waits for the thread to end even if interrupted: tearing mpv down under a running thread would crash. */
     private static void join(Thread thread) {
         if (thread == null) {
             return;
         }
-        try {
-            thread.join();
-        } catch (InterruptedException e) {
+        boolean interrupted = false;
+        while (thread.isAlive()) {
+            try {
+                thread.join();
+            } catch (InterruptedException e) {
+                interrupted = true;
+            }
+        }
+        if (interrupted) {
             Thread.currentThread().interrupt();
         }
     }
