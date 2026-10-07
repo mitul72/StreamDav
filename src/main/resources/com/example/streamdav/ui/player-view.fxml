@@ -3,6 +3,7 @@
 <?import javafx.geometry.Insets?>
 <?import javafx.scene.control.Button?>
 <?import javafx.scene.control.Label?>
+<?import javafx.scene.control.MenuButton?>
 <?import javafx.scene.control.ProgressIndicator?>
 <?import javafx.scene.control.Slider?>
 <?import javafx.scene.control.Tooltip?>
@@ -37,6 +38,12 @@
                     </Button>
                     <Label fx:id="timeLabel" styleClass="time-label" text="0:00 / --:--"/>
                     <Region HBox.hgrow="ALWAYS"/>
+                    <MenuButton fx:id="audioMenu" styleClass="icon-button" visible="false">
+                        <tooltip><Tooltip text="Audio"/></tooltip>
+                    </MenuButton>
+                    <MenuButton fx:id="subtitleMenu" styleClass="icon-button" visible="false">
+                        <tooltip><Tooltip text="Subtitles"/></tooltip>
+                    </MenuButton>
                     <Button fx:id="muteButton" styleClass="icon-button" onAction="#toggleMute">
                         <tooltip><Tooltip text="Mute (M)"/></tooltip>
                     </Button>

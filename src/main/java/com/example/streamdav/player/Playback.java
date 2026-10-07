@@ -4,6 +4,8 @@ import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.DoubleProperty;
 import javafx.beans.property.ReadOnlyBooleanProperty;
 import javafx.beans.property.ReadOnlyObjectProperty;
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
 import javafx.scene.layout.Region;
 import javafx.util.Duration;
 
@@ -46,6 +48,15 @@ public interface Playback {
     void pause();
 
     void seek(Duration position);
+
+    /** Audio and subtitle tracks to choose between; empty if the engine can't switch tracks. */
+    default ObservableList<Track> tracks() {
+        return FXCollections.emptyObservableList();
+    }
+
+    /** Switches to {@code track}; {@code null} turns subtitles off. */
+    default void selectTrack(Track.Kind kind, Track track) {
+    }
 
     /** Stops playback and releases the engine. The playback can't be used afterwards. */
     void dispose();

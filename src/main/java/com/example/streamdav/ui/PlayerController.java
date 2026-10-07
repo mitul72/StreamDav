@@ -3,16 +3,21 @@ package com.example.streamdav.ui;
 import com.example.streamdav.library.RemoteFile;
 import com.example.streamdav.player.Playback;
 import com.example.streamdav.player.Playback.Status;
+import com.example.streamdav.player.Track;
 import javafx.animation.FadeTransition;
 import javafx.animation.PauseTransition;
 import javafx.beans.value.ChangeListener;
+import javafx.collections.ListChangeListener;
 import javafx.fxml.FXML;
 import javafx.scene.Cursor;
 import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
+import javafx.scene.control.MenuButton;
 import javafx.scene.control.ProgressIndicator;
+import javafx.scene.control.RadioMenuItem;
 import javafx.scene.control.Slider;
+import javafx.scene.control.ToggleGroup;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseButton;
 import javafx.scene.input.MouseEvent;
@@ -22,6 +27,7 @@ import javafx.scene.layout.VBox;
 import javafx.util.Duration;
 
 import java.net.URI;
+import java.util.List;
 
 public class PlayerController {
     private static final double SKIP_SECONDS = 10;
@@ -40,6 +46,8 @@ public class PlayerController {
     @FXML private Slider seekSlider;
     @FXML private Button playButton;
     @FXML private Label timeLabel;
+    @FXML private MenuButton audioMenu;
+    @FXML private MenuButton subtitleMenu;
     @FXML private Button muteButton;
     @FXML private Slider volumeSlider;
     @FXML private Button externalButton;
@@ -70,6 +78,13 @@ public class PlayerController {
         playButton.setGraphic(Icon.PLAY.create(30));
         muteButton.setGraphic(Icon.VOLUME.create(22));
         externalButton.setGraphic(Icon.EXTERNAL.create(22));
+        audioMenu.setGraphic(Icon.AUDIO_TRACKS.create(22));
+        subtitleMenu.setGraphic(Icon.SUBTITLES.create(22));
+        for (MenuButton menu : List.of(audioMenu, subtitleMenu)) {
+            menu.managedProperty().bind(menu.visibleProperty());
+            // Keep the controls up while a menu is open.
+            menu.showingProperty().addListener((observable, was, showing) -> showControls());
+        }
         fullScreenListener.changed(null, null, navigator.stage().isFullScreen());
         navigator.stage().fullScreenProperty().addListener(fullScreenListener);
 
@@ -93,6 +108,8 @@ public class PlayerController {
         playback.muteProperty().addListener((observable, old, muted) ->
                 muteButton.setGraphic((muted ? Icon.MUTED : Icon.VOLUME).create(22)));
         volumeSlider.valueProperty().bindBidirectional(playback.volumeProperty());
+        playback.tracks().addListener((ListChangeListener<Track>) change -> updateTrackMenus());
+        updateTrackMenus();
         onStatusChanged(playback.status());
     }
 
@@ -162,6 +179,35 @@ public class PlayerController {
             seekSlider.setMax(total.toSeconds());
         }
         updatePosition(playback.positionProperty().get());
+    }
+
+    /** Offers a choice of audio only when there's more than one track, and subtitles whenever there are any. */
+    private void updateTrackMenus() {
+        List<Track> audio = playback.tracks().stream().filter(track -> track.kind() == Track.Kind.AUDIO).toList();
+        List<Track> subtitles = playback.tracks().stream().filter(track -> track.kind() == Track.Kind.SUBTITLE).toList();
+        fillTrackMenu(audioMenu, Track.Kind.AUDIO, audio, false);
+        fillTrackMenu(subtitleMenu, Track.Kind.SUBTITLE, subtitles, true);
+        audioMenu.setVisible(audio.size() > 1);
+        subtitleMenu.setVisible(!subtitles.isEmpty());
+    }
+
+    private void fillTrackMenu(MenuButton menu, Track.Kind kind, List<Track> tracks, boolean canTurnOff) {
+        ToggleGroup group = new ToggleGroup();
+        menu.getItems().clear();
+        if (canTurnOff) {
+            RadioMenuItem off = new RadioMenuItem("Off");
+            off.setToggleGroup(group);
+            off.setSelected(tracks.stream().noneMatch(Track::selected));
+            off.setOnAction(event -> playback.selectTrack(kind, null));
+            menu.getItems().add(off);
+        }
+        for (Track track : tracks) {
+            RadioMenuItem item = new RadioMenuItem(track.label());
+            item.setToggleGroup(group);
+            item.setSelected(track.selected());
+            item.setOnAction(event -> playback.selectTrack(kind, track));
+            menu.getItems().add(item);
+        }
     }
 
     private void updatePosition(Duration time) {
@@ -314,7 +360,7 @@ public class PlayerController {
     }
 
     private void hideControls() {
-        if (isPlayingVideo()) {
+        if (isPlayingVideo() && !audioMenu.isShowing() && !subtitleMenu.isShowing()) {
             fadeOut.playFromStart();
             root.setCursor(Cursor.NONE);
         }

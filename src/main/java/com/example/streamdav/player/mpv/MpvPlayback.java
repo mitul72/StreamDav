@@ -1,6 +1,7 @@
 package com.example.streamdav.player.mpv;
 
 import com.example.streamdav.player.Playback;
+import com.example.streamdav.player.Track;
 import javafx.application.Platform;
 import javafx.beans.property.BooleanProperty;
 import javafx.beans.property.DoubleProperty;
@@ -10,6 +11,8 @@ import javafx.beans.property.ReadOnlyObjectProperty;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.beans.property.SimpleBooleanProperty;
 import javafx.beans.property.SimpleDoubleProperty;
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
 import javafx.scene.image.ImageView;
 import javafx.scene.image.PixelBuffer;
 import javafx.scene.image.PixelFormat;
@@ -24,6 +27,7 @@ import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.net.URI;
 import java.nio.ByteBuffer;
+import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -64,6 +68,8 @@ public final class MpvPlayback implements Playback {
     private final ReadOnlyBooleanWrapper audioOnly = new ReadOnlyBooleanWrapper();
     private final DoubleProperty volume = new SimpleDoubleProperty(1);
     private final BooleanProperty mute = new SimpleBooleanProperty();
+    private final ObservableList<Track> tracks = FXCollections.observableArrayList();
+    private final ObservableList<Track> readOnlyTracks = FXCollections.unmodifiableObservableList(tracks);
     private String errorMessage;
 
     // Playback state as last reported by mpv; only touched on the JavaFX thread.
@@ -140,6 +146,8 @@ public final class MpvPlayback implements Playback {
         observe("mute", LibMpv.FORMAT_FLAG);
         observe("dwidth", LibMpv.FORMAT_INT64);
         observe("dheight", LibMpv.FORMAT_INT64);
+        // Changes whenever tracks are added or a different one is selected.
+        observe("track-list", LibMpv.FORMAT_NONE);
 
         volume.addListener((observable, old, value) -> {
             if (!updatingFromMpv) {
@@ -229,6 +237,10 @@ public final class MpvPlayback implements Playback {
             case "dheight" -> {
                 videoHeight = value instanceof Long height ? height : 0;
                 renderRequests.release();
+            }
+            case "track-list" -> {
+                List<Track> current = MpvTracks.read(name -> mpv.getProperty(handle, name), Locale.getDefault());
+                Platform.runLater(() -> tracks.setAll(current));
             }
             default -> {
             }
@@ -434,6 +446,16 @@ public final class MpvPlayback implements Playback {
     @Override
     public void seek(Duration target) {
         command("seek", String.format(Locale.ROOT, "%.3f", target.toSeconds()), "absolute");
+    }
+
+    @Override
+    public ObservableList<Track> tracks() {
+        return readOnlyTracks;
+    }
+
+    @Override
+    public void selectTrack(Track.Kind kind, Track track) {
+        property(kind == Track.Kind.AUDIO ? "aid" : "sid", track == null ? "no" : track.id());
     }
 
     @Override
