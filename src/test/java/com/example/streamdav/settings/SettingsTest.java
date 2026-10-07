@@ -104,6 +104,14 @@ class SettingsTest {
     }
 
     @Test
+    void blankTmdbKeyClearsTheSetting() {
+        settings.setTmdbApiKey(" abc123 ");
+        assertEquals(Optional.of("abc123"), settings.tmdbApiKey());
+        settings.setTmdbApiKey("");
+        assertEquals(Optional.empty(), settings.tmdbApiKey());
+    }
+
+    @Test
     void remembersResumePositionsPerUrl() {
         URI movie = URI.create("https://nas.local/Movies/" + "Very%20Long%20Name".repeat(10) + ".mp4");
         URI other = URI.create("https://nas.local/Movies/Other.mp4");

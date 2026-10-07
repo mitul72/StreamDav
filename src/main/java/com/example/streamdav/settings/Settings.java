@@ -16,13 +16,14 @@ import java.util.UUID;
 import java.util.prefs.BackingStoreException;
 import java.util.prefs.Preferences;
 
-/** User preferences: saved servers, the external player command, and where to resume each video. */
+/** User preferences: saved servers, the external player command, API keys, and where to resume each video. */
 public final class Settings {
     private static final Logger log = LogManager.getLogger(Settings.class);
     private static final String SERVERS = "servers";
     private static final String RESUME = "resume";
     private static final String EXTERNAL_PLAYER = "externalPlayer";
     private static final String AUTO_CONNECT = "autoConnect";
+    private static final String TMDB_API_KEY = "tmdbApiKey";
 
     private final Preferences prefs;
 
@@ -108,6 +109,21 @@ public final class Settings {
             prefs.remove(EXTERNAL_PLAYER);
         } else {
             prefs.put(EXTERNAL_PLAYER, command.strip());
+        }
+        flush();
+    }
+
+    /** The user's own TMDB key, if they entered one. */
+    public Optional<String> tmdbApiKey() {
+        return Optional.ofNullable(prefs.get(TMDB_API_KEY, null)).filter(key -> !key.isBlank());
+    }
+
+    /** A blank key clears the setting, falling back to the built-in key if there is one. */
+    public void setTmdbApiKey(String key) {
+        if (key == null || key.isBlank()) {
+            prefs.remove(TMDB_API_KEY);
+        } else {
+            prefs.put(TMDB_API_KEY, key.strip());
         }
         flush();
     }
