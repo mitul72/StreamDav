@@ -245,16 +245,16 @@ public final class MpvPlayback implements Playback {
                 case LibMpv.EVENT_FILE_LOADED -> {
                     String videoTrack = mpv.getProperty(handle, "vid");
                     boolean noVideo = videoTrack == null || videoTrack.equals("no");
-                    Platform.runLater(() -> audioOnly.set(noVideo));
+                    onFx(() -> audioOnly.set(noVideo));
                 }
-                case LibMpv.EVENT_PLAYBACK_RESTART -> Platform.runLater(() -> {
+                case LibMpv.EVENT_PLAYBACK_RESTART -> onFx(() -> {
                     started = true;
                     updateStatus();
                 });
                 case LibMpv.EVENT_END_FILE -> {
                     if (LibMpv.endFileReason(event) == LibMpv.END_FILE_REASON_ERROR) {
                         String message = describe(LibMpv.endFileError(event));
-                        Platform.runLater(() -> fail(message));
+                        onFx(() -> fail(message));
                     }
                 }
                 case LibMpv.EVENT_LOG_MESSAGE -> log.warn("mpv {}", LibMpv.logMessage(event));
@@ -274,33 +274,33 @@ public final class MpvPlayback implements Playback {
                 }
                 // Coalesce: mpv reports this every frame, the UI only needs the latest.
                 if (pendingPosition.getAndSet(seconds) == null) {
-                    Platform.runLater(() -> position.set(Duration.seconds(pendingPosition.getAndSet(null))));
+                    onFx(() -> position.set(Duration.seconds(pendingPosition.getAndSet(null))));
                 }
             }
-            case "duration" -> Platform.runLater(() ->
+            case "duration" -> onFx(() ->
                     duration.set(value instanceof Double seconds ? Duration.seconds(seconds) : Duration.UNKNOWN));
-            case "pause" -> Platform.runLater(() -> {
+            case "pause" -> onFx(() -> {
                 paused = Boolean.TRUE.equals(value);
                 updateStatus();
             });
-            case "paused-for-cache" -> Platform.runLater(() -> {
+            case "paused-for-cache" -> onFx(() -> {
                 waiting = Boolean.TRUE.equals(value);
                 updateStatus();
             });
-            case "seeking" -> Platform.runLater(() -> {
+            case "seeking" -> onFx(() -> {
                 seeking = Boolean.TRUE.equals(value);
                 updateStatus();
             });
-            case "eof-reached" -> Platform.runLater(() -> {
+            case "eof-reached" -> onFx(() -> {
                 ended = Boolean.TRUE.equals(value);
                 updateStatus();
             });
             case "volume" -> {
                 if (value instanceof Double level) {
-                    Platform.runLater(() -> fromMpv(() -> volume.set(Math.clamp(level / 100, 0, 1))));
+                    onFx(() -> fromMpv(() -> volume.set(Math.clamp(level / 100, 0, 1))));
                 }
             }
-            case "mute" -> Platform.runLater(() -> fromMpv(() -> mute.set(Boolean.TRUE.equals(value))));
+            case "mute" -> onFx(() -> fromMpv(() -> mute.set(Boolean.TRUE.equals(value))));
             case "dwidth" -> {
                 videoWidth = value instanceof Long width ? width : 0;
                 renderRequests.release();
@@ -311,7 +311,7 @@ public final class MpvPlayback implements Playback {
             }
             case "track-list" -> {
                 List<Track> current = MpvTracks.read(name -> mpv.getProperty(handle, name), Locale.getDefault());
-                Platform.runLater(() -> tracks.setAll(current));
+                onFx(() -> tracks.setAll(current));
             }
             default -> {
             }
@@ -324,7 +324,7 @@ public final class MpvPlayback implements Playback {
         } catch (RuntimeException | Error e) {
             // Without this the thread would die silently: the picture freezes while the sound carries on.
             log.error("Video rendering stopped", e);
-            Platform.runLater(() -> fail("The video couldn't be displayed."));
+            onFx(() -> fail("The video couldn't be displayed."));
         }
     }
 
@@ -367,7 +367,7 @@ public final class MpvPlayback implements Playback {
             // Publish the frame; if the previous one was never shown, reuse its buffer for the next frame.
             back = ready.getAndSet(back);
             if (framePending.compareAndSet(false, true)) {
-                Platform.runLater(this::showFrame);
+                onFx(this::showFrame);
             }
         }
     }
@@ -445,6 +445,15 @@ public final class MpvPlayback implements Playback {
         failed = true;
         errorMessage = message;
         updateStatus();
+    }
+
+    /** Runs an update from an mpv thread on the JavaFX thread, unless the playback was disposed in the meantime. */
+    private void onFx(Runnable update) {
+        Platform.runLater(() -> {
+            if (!closed) {
+                update.run();
+            }
+        });
     }
 
     private void fromMpv(Runnable update) {

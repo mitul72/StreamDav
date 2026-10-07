@@ -101,16 +101,23 @@ public class PlayerController {
         resumeFrom = Duration.millis(resumeMillis);
         playback = engine.open(streamUrl, resumeFrom);
         root.getChildren().addFirst(playback.view());
-        playback.statusProperty().addListener((observable, old, status) -> onStatusChanged(status));
-        playback.positionProperty().addListener((observable, old, time) -> updatePosition(time));
-        playback.durationProperty().addListener((observable, old, total) -> onDurationChanged(total));
-        playback.audioOnlyProperty().addListener((observable, old, audio) -> audioPane.setVisible(audio));
-        playback.muteProperty().addListener((observable, old, muted) ->
-                muteButton.setGraphic((muted ? Icon.MUTED : Icon.VOLUME).create(22)));
+        // Ignore anything the engine reports after this screen has closed (events already queued, say).
+        playback.statusProperty().addListener((observable, old, status) -> ifOpen(() -> onStatusChanged(status)));
+        playback.positionProperty().addListener((observable, old, time) -> ifOpen(() -> updatePosition(time)));
+        playback.durationProperty().addListener((observable, old, total) -> ifOpen(() -> onDurationChanged(total)));
+        playback.audioOnlyProperty().addListener((observable, old, audio) -> ifOpen(() -> audioPane.setVisible(audio)));
+        playback.muteProperty().addListener((observable, old, muted) -> ifOpen(() ->
+                muteButton.setGraphic((muted ? Icon.MUTED : Icon.VOLUME).create(22))));
         volumeSlider.valueProperty().bindBidirectional(playback.volumeProperty());
-        playback.tracks().addListener((ListChangeListener<Track>) change -> updateTrackMenus());
+        playback.tracks().addListener((ListChangeListener<Track>) change -> ifOpen(this::updateTrackMenus));
         updateTrackMenus();
         onStatusChanged(playback.status());
+    }
+
+    private void ifOpen(Runnable update) {
+        if (!closed) {
+            update.run();
+        }
     }
 
     void focus() {
