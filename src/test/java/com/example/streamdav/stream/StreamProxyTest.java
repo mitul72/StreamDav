@@ -13,14 +13,18 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.Optional;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class StreamProxyTest {
@@ -70,6 +74,7 @@ class StreamProxyTest {
                 }
             }
         });
+        upstream.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
         upstream.start();
         remote = URI.create("http://127.0.0.1:" + upstream.getAddress().getPort() + "/files/My%20Clip.mp4");
         proxy = new StreamProxy();
@@ -149,7 +154,7 @@ class StreamProxyTest {
 
     @Test
     void asksForUncompressedDataAndKeepsAnyEncodingTheServerUsesAnyway() throws Exception {
-        java.util.concurrent.atomic.AtomicReference<String> acceptEncoding = new java.util.concurrent.atomic.AtomicReference<>();
+        AtomicReference<String> acceptEncoding = new AtomicReference<>();
         byte[] gzipped = {0x1f, (byte) 0x8b, 8, 0};
         upstream.createContext("/gzip/", exchange -> {
             try (exchange) {
@@ -166,6 +171,62 @@ class StreamProxyTest {
         assertEquals("identity", acceptEncoding.get());
         assertEquals("gzip", response.headers().firstValue("Content-Encoding").orElseThrow());
         assertArrayEquals(gzipped, response.body());
+    }
+
+    @Test
+    void givesUpWhenTheServerNeverStartsAnswering() throws Exception {
+        upstream.createContext("/silent/", exchange -> pause(5000));
+        try (StreamProxy quick = new StreamProxy(Duration.ofMillis(500), Duration.ofSeconds(30))) {
+            URI url = quick.publish(remote.resolve("/silent/clip.mp4"), client, Optional.empty());
+            long start = System.nanoTime();
+
+            assertEquals(504, send(HttpRequest.newBuilder(url)).statusCode());
+            assertTrue(System.nanoTime() - start < Duration.ofSeconds(3).toNanos());
+        }
+    }
+
+    @Test
+    void closesTheStreamWhenTheServerStopsSendingData() throws Exception {
+        upstream.createContext("/stall/", exchange -> {
+            exchange.sendResponseHeaders(200, media.length);
+            exchange.getResponseBody().write(media, 0, 100);
+            exchange.getResponseBody().flush();
+            pause(5000);
+            exchange.close();
+        });
+        try (StreamProxy quick = new StreamProxy(Duration.ofSeconds(30), Duration.ofMillis(500))) {
+            URI url = quick.publish(remote.resolve("/stall/clip.mp4"), client, Optional.empty());
+            long start = System.nanoTime();
+
+            assertThrows(IOException.class, () -> send(HttpRequest.newBuilder(url)), "a cut-off body is an error");
+            assertTrue(System.nanoTime() - start < Duration.ofSeconds(2).toNanos());
+        }
+    }
+
+    @Test
+    void keepsStreamingFromASlowButSteadyServer() throws Exception {
+        upstream.createContext("/slow/", exchange -> {
+            exchange.sendResponseHeaders(200, media.length);
+            for (int offset = 0; offset < media.length; offset += 100) {
+                exchange.getResponseBody().write(media, offset, 100);
+                exchange.getResponseBody().flush();
+                pause(150);
+            }
+            exchange.close();
+        });
+        try (StreamProxy quick = new StreamProxy(Duration.ofSeconds(30), Duration.ofMillis(600))) {
+            URI url = quick.publish(remote.resolve("/slow/clip.mp4"), client, Optional.empty());
+
+            assertArrayEquals(media, send(HttpRequest.newBuilder(url)).body(), "1.5 s in total, but never 600 ms idle");
+        }
+    }
+
+    private static void pause(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     @Test
