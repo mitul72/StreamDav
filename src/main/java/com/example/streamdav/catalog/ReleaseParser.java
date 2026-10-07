@@ -39,6 +39,8 @@ public final class ReleaseParser {
     /** {@code Title Episode 05}, {@code Title Ep 05}, {@code Title E05}. */
     private static final Pattern WORD_EPISODE =
             Pattern.compile("(?i)^(.*?) ?(?<![a-z])(?:episode|ep|e) ?(\\d{1,4})(?:v\\d)?(?: |$)");
+    /** {@code [One Pace][1] Romance Dawn 01}, {@code Naruto Shippuuden 013}: a name ending in a bare episode number. */
+    private static final Pattern TRAILING_NUMBER = Pattern.compile("^(.+?) (\\d{1,4})(?:v\\d)?$");
     /** A file named only by its number, like {@code 05}, {@code E05} or {@code 05 - Pilot}. */
     private static final Pattern EPISODE_ONLY =
             Pattern.compile("(?i)^(?:(?:episode|ep|e) ?)?(\\d{1,3})(?:v\\d)?(?: - .*| .*)?$");
@@ -47,12 +49,17 @@ public final class ReleaseParser {
             Pattern.compile("(?i)^(?:(?:season|series|staffel|saison|temporada) ?(\\d{1,2})|s(\\d{1,2}))$");
     private static final Pattern SEASON_PACK = Pattern.compile("(?i)(?<![a-z0-9])(?:s(\\d{1,2})|season ?(\\d{1,2}))(?! ?e\\d)(?!\\d)");
     private static final Pattern YEAR = Pattern.compile("(?<!\\d)((?:19|20)\\d{2})(?![\\dp])");
+    private static final Pattern LEADING_YEAR = Pattern.compile("^(?:\\(((?:19|20)\\d{2})\\)|((?:19|20)\\d{2})[a-z]) ");
+    private static final Pattern NOTE = Pattern.compile("(?<=\\S)\\s*\\((?!\\s*(?:19|20)\\d{2}\\s*\\))[^()]*\\)");
     private static final Pattern TRAILING_YEAR = Pattern.compile("^(.*?) ?\\(?((?:19|20)\\d{2})\\)?$");
     /** Tokens that only appear after the title: resolution, source and codec. Everything from here on is noise. */
     private static final Pattern RELEASE_TAG = Pattern.compile("(?i)(?<![a-z0-9])(?:2160p|1080p|1080i|720p|576p|480p|4k|uhd"
             + "|blu ?ray|bdrip|brrip|bdremux|remux|web ?dl|webrip|hdtv|dvdrip|hdrip"
-            + "|x ?264|x ?265|h ?264|h ?265|hevc|xvid|av1|10 ?bit)(?![a-z0-9])");
+            + "|x ?264|x ?265|h ?264|h ?265|hevc|xvid|av1|10 ?bit|hdr|hdr10\\+?|dv|dovi|sdr|hlg)(?![a-z0-9])");
 
+    private static final Pattern COLLECTION = Pattern.compile(
+            "(?i)(?<![a-z])(?:saga|collection|trilogy|quadrilogy|anthology|box ?set|filmography)(?![a-z])");
+    private static final Pattern COLLECTION_INDEX = Pattern.compile("^\\d{1,2} ?[-.] ?(?=\\p{L})");
     private static final Set<String> EXTRAS_FOLDERS = Set.of("sample", "samples", "extras", "extra", "featurettes",
             "featurette", "trailers", "trailer", "behind the scenes", "deleted scenes", "interviews", "bonus", "shorts");
     /** Folders that organise a library rather than name a title. */
@@ -103,9 +110,15 @@ public final class ReleaseParser {
         }
         match = EPISODE_ONLY.matcher(head);
         boolean inSeries = folderSeason != null || seasonPackFolder(folders).isPresent();
-        if (match.matches() && (inSeries || !Character.isDigit(head.charAt(0)))) {
+        // "E1 The Equalizer (2014)" in a collection is a film, not episode 1: episode-only names have no year.
+        if (match.matches() && (inSeries || !Character.isDigit(head.charAt(0))) && !YEAR.matcher(head).find()) {
             return episode("", folderSeason != null ? folderSeason : seasonPackFolder(folders).orElse(null),
                     List.of(Integer.parseInt(match.group(1))), anime, folders);
+        }
+        match = TRAILING_NUMBER.matcher(head);
+        // Bracket-tagged releases, or a zero-padded number ("Naruto Shippuuden 013"), which film titles don't have.
+        if (match.matches() && !isYear(match.group(2)) && (anime || match.group(2).startsWith("0"))) {
+            return episode(match.group(1), folderSeason, List.of(Integer.parseInt(match.group(2))), anime, folders);
         }
         match = WORD_EPISODE.matcher(head);
         if (match.find() && !match.group(1).isBlank()) {
@@ -140,6 +153,13 @@ public final class ReleaseParser {
             title = cleanTitle(trailingYear.group(1));
             year = Integer.parseInt(trailingYear.group(2));
         }
+        if (year == null) {
+            // "Fighting Spirit 2000 S01 1080p/Fighting Spirit - 1x01.mkv": the season pack's folder has the year.
+            String fileTitle = title;
+            year = nearestTitleFolder(folders).map(ReleaseParser::folderTitleAndYear)
+                    .filter(folder -> folder.year() != null && Catalog.key(folder.title()).equals(Catalog.key(fileTitle)))
+                    .map(TitleAndYear::year).orElse(null);
+        }
         if (season == null) {
             season = seasonFromFolders(folders);
         }
@@ -147,6 +167,10 @@ public final class ReleaseParser {
     }
 
     private static ParsedRelease movie(String name, List<String> folders) {
+        if (!folders.isEmpty() && COLLECTION.matcher(folders.getLast()).find()) {
+            // "Saga Harry Potter/1-Harry.Potter...": the number orders the collection, it isn't part of the title.
+            name = COLLECTION_INDEX.matcher(name).replaceFirst("");
+        }
         TitleAndYear fromFile = titleAndYear(name);
         if (fromFile.year() == null || fromFile.title().isEmpty()) {
             // "Movie (2014)/movie.mkv": the folder usually names it better.
@@ -169,12 +193,20 @@ public final class ReleaseParser {
         int yearStart = -1;
         String yearText = null;
         while (year.find() && year.start() < tags) {
-            if (year.start() > 0) {
+            // A year with no title before it ("(1968) Planet Of The Apes") is a leading year, handled below.
+            if (!cleanTitle(name.substring(0, year.start())).isEmpty()) {
                 yearStart = year.start();
                 yearText = year.group(1);
             }
         }
         if (yearText == null) {
+            // "(1968) Planet Of The Apes", "2017a Dave Chappelle ...": the year first. A bare leading year is left
+            // alone, since it's usually part of the title ("2001 A Space Odyssey").
+            Matcher leading = LEADING_YEAR.matcher(name);
+            if (leading.find() && leading.end() < tags) {
+                String leadingYear = leading.group(1) != null ? leading.group(1) : leading.group(2);
+                return new TitleAndYear(cleanTitle(name.substring(leading.end(), tags)), Integer.parseInt(leadingYear));
+            }
             return new TitleAndYear(cleanTitle(name.substring(0, tags)), null);
         }
         return new TitleAndYear(cleanTitle(name.substring(0, yearStart)), Integer.parseInt(yearText));
@@ -246,10 +278,14 @@ public final class ReleaseParser {
 
     /** A show folder may be a season pack ("Show Name S01 1080p") or carry a year ("Show Name (2019)"). */
     private static String folderTitle(String folder) {
+        return folderTitleAndYear(folder).title();
+    }
+
+    private static TitleAndYear folderTitleAndYear(String folder) {
         Matcher seasonPack = SEASON_PACK.matcher(folder);
         String title = seasonPack.find() ? folder.substring(0, seasonPack.start()) : folder;
         TitleAndYear parsed = titleAndYear(title);
-        return parsed.title().isEmpty() ? cleanTitle(title) : parsed.title();
+        return parsed.title().isEmpty() ? new TitleAndYear(cleanTitle(title), null) : parsed;
     }
 
     private static String beforeReleaseTags(String name) {
@@ -269,10 +305,18 @@ public final class ReleaseParser {
     }
 
     private static String cleanTitle(String title) {
-        String cleaned = title.replaceAll("\\(\\s*\\)", " ");
+        // Notes in parentheses after the title ("Black Book (Zwartboek)", "(France)") aren't part of it, but a leading
+        // one is ("(500) Days of Summer") and so is a year, which callers read off the end.
+        String cleaned = NOTE.matcher(title).replaceAll(" ");
+        int open = cleaned.lastIndexOf('(');
+        if (open > 0 && cleaned.indexOf(')', open) < 0) {
+            // Left open where a year was cut off: "A Doll's House (Et Dukkehjem - Norway".
+            cleaned = cleaned.substring(0, open);
+        }
+        cleaned = cleaned.replaceAll("\\(\\s*\\)", " ");
         cleaned = SPACES.matcher(cleaned).replaceAll(" ").strip();
         // Separators left dangling once the episode or year is cut off: "Show -", "Movie (".
-        return cleaned.replaceAll("^[\\s\\-:(]+|[\\s\\-:(]+$", "");
+        return cleaned.replaceAll("^[\\s\\-:]+|[\\s\\-:(]+$", "");
     }
 
     private static boolean isYear(String number) {

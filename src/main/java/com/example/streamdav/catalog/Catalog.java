@@ -12,6 +12,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -67,6 +69,7 @@ public record Catalog(List<Movie> movies, List<Show> shows, List<ScannedFile> un
             season == null ? -1 : season == 0 ? Integer.MAX_VALUE : season);
 
     public static Catalog of(List<ScannedFile> files) {
+        files = joinNumberedFilesToShows(files);
         Map<String, List<ScannedFile>> movies = new LinkedHashMap<>();
         Map<String, List<ScannedFile>> shows = new LinkedHashMap<>();
         List<ScannedFile> unsorted = new ArrayList<>();
@@ -87,6 +90,35 @@ public record Catalog(List<Movie> movies, List<Show> shows, List<ScannedFile> un
                 shows.values().stream().map(Catalog::show).sorted(Comparator.comparing(Show::title, byTitle)).toList(),
                 List.copyOf(unsorted));
     }
+
+    /**
+     * "Naruto Shippuuden 121" on its own reads as a film, but not next to "Naruto Shippuuden 013" (an episode): a
+     * year-less "movie" named like an existing show plus a number is that show's episode.
+     */
+    private static List<ScannedFile> joinNumberedFilesToShows(List<ScannedFile> files) {
+        Map<String, ParsedRelease> shows = new LinkedHashMap<>();
+        for (ScannedFile file : files) {
+            if (file.release().kind() == Kind.EPISODE && !file.release().title().isBlank()) {
+                shows.putIfAbsent(key(file.release().title()), file.release());
+            }
+        }
+        return files.stream().map(file -> {
+            ParsedRelease release = file.release();
+            Matcher numbered = NUMBERED_TITLE.matcher(release.title());
+            if (release.kind() != Kind.MOVIE || release.year() != null || !numbered.matches()) {
+                return file;
+            }
+            ParsedRelease show = shows.get(key(numbered.group(1)));
+            if (show == null) {
+                return file;
+            }
+            int number = Integer.parseInt(numbered.group(2));
+            return new ScannedFile(file.file(), file.folders(), ParsedRelease.episode(show.title(), show.year(),
+                    show.absolute() ? null : show.season(), List.of(number), show.anime()));
+        }).toList();
+    }
+
+    private static final Pattern NUMBERED_TITLE = Pattern.compile("^(.+?) (\\d{1,4})$");
 
     private static Movie movie(List<ScannedFile> versions) {
         ParsedRelease first = versions.getFirst().release();

@@ -107,6 +107,18 @@ class CatalogTest {
     }
 
     @Test
+    void numberedFilesJoinTheShowTheirSiblingsBelongTo() {
+        Catalog catalog = catalog(
+                "Naruto Shippuden AV1/Naruto Shippuuden 013 [1080p BD AV1 Dual Audio].mkv",
+                "Naruto Shippuden AV1/Naruto Shippuuden 121 [1080p BD AV1 Dual Audio].mkv",
+                "Call Northside 777 (1948).mkv");
+
+        assertEquals(List.of("Call Northside 777"), catalog.movies().stream().map(Catalog.Movie::title).toList());
+        assertEquals(List.of("Episode 13", "Episode 121"),
+                catalog.shows().getFirst().episodes().stream().map(Episode::label).toList());
+    }
+
+    @Test
     void filesWithoutTitlesAreSetAside() {
         Catalog catalog = catalog("1080p.mkv");
 

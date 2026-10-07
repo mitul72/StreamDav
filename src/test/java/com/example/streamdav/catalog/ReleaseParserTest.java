@@ -120,6 +120,8 @@ class ReleaseParserTest {
         movie("Charlotte's Web.mkv", "Charlotte's Web", null);
         movie("Some.Movie.1080p.WEBRip.x265.mkv", "Some Movie", null);
         movie("Se7en.mkv", "Se7en", null);
+        movie("Apollo 13.mkv", "Apollo 13", null);
+        movie("District 9.mkv", "District 9", null);
     }
 
     @Test
@@ -127,6 +129,55 @@ class ReleaseParserTest {
         movie("Movies/Arrival (2016)/arrival.mkv", "Arrival", 2016);
         movie("torrents/The.Matrix.1999.2160p.UHD.BluRay.REMUX/1080p.mkv", "The Matrix", 1999);
         movie("Movies/Heat (1995)/Heat (1995).mkv", "Heat", 1995);
+    }
+
+    /** Names from a real Real-Debrid library that the first version got wrong. */
+    @Test
+    void namesFromARealLibrary() {
+        movie("Saga Harry Potter 4k/1-Harry.Potter.Y.La.Piedra.Filosofal.(2001)(Spanish.English.Subs).UHD.1440p.HEVC-AC3.by.Geot.mkv",
+                "Harry Potter Y La Piedra Filosofal", 2001);
+        movie("Saga Harry Potter 4k/7-Harry.Potter.Y.Las.Reliquias.De.La.Muerte.Parte.1.(2010)(Spanish.English.Subs).mkv",
+                "Harry Potter Y Las Reliquias De La Muerte Parte 1", 2010);
+        movie("The.Social.Network.KP.HDR.2160p-SOFCJ.mkv/The.Social.Network.KP.HDR.2160p-SOFCJ.mkv",
+                "The Social Network KP", null);
+        episode("[One Pace][1-7] Romance Dawn [1080p]/[One Pace][1] Romance Dawn 01 [1080p][FB72C13F].mkv",
+                "Romance Dawn", null, List.of(1), true);
+        episode("[One Pace][1-7] Romance Dawn [1080p]/[One Pace][5-7] Romance Dawn 04 [1080p][9A48E3EB].mkv",
+                "Romance Dawn", null, List.of(4), true);
+        ParsedRelease fightingSpirit = parse(
+                "Fighting Spirit 2000 S01 1080p BluRay x264 DD 2.0 MP3 2.0-CriptidZzz/Fighting Spirit - 1x01 - The First Step.mkv");
+        assertEquals("Fighting Spirit", fightingSpirit.title());
+        assertEquals(2000, fightingSpirit.year(), "the year comes from the season pack's folder");
+        episode("Naruto Shippuden AV1/Naruto Shippuuden 013 [1080p BD AV1 Dual Audio].mkv",
+                "Naruto Shippuuden", null, List.of(13), false);
+        episode("[AnimeRG] Dragon Ball KAI [DUAL-AUDIO] [1080p] [x265] [pseudo]/[AnimeRG] Dragon Ball KAI - 012 [1080p] [x265] [pseudo].mkv",
+                "Dragon Ball KAI", null, List.of(12), true);
+        episode("[nekotan] Hajime no Ippo S01 v2 (BD Remux 1080p x264 8-bit FLAC) [Dual Audio]/"
+                + "[nekotan] Hajime no Ippo S01E01 v2 (BD Remux 1080p x264 8-bit FLAC) [Dual Audio].mkv",
+                "Hajime no Ippo", 1, List.of(1), true);
+    }
+
+    /** More names from the same library, from a large film collection. */
+    @Test
+    void namesFromAFilmCollection() {
+        String collection = "moviesbyrizzo 650 top all-time movies collection 1080p 598GB/";
+        movie(collection + "Black Book (Zwartboek) (2006) 1080p (moviesbyrizzo upl).mp4", "Black Book", 2006);
+        movie(collection + "A Doll's House (Et Dukkehjem - Norway 1973) 720p (moviesbyrizzo).mp4", "A Doll's House", 1973);
+        movie(collection + "Breaker Morant (Australia - 1980) 1080p (moviesbyrizzo upl).mp4", "Breaker Morant", 1980);
+        movie(collection + "100%  Arabica  (France) (moviesbyrizzo) (engsubs).mp4", "100% Arabica", null);
+        movie(collection + "(1968) Planet Of The Apes 1080p (moviesbyrizzo upl).mp4", "Planet Of The Apes", 1968);
+        movie("Amazing Films 8 Mp4 1080p/2017a Dave Chappelle The Age Of Spin.mp4", "Dave Chappelle The Age Of Spin", 2017);
+        movie("Amazing Films 8 Mp4 1080p/E1 The Equalizer (2014) 1080p Surround.mp4", "E1 The Equalizer", 2014);
+        movie("(500) Days of Summer (2009).mkv", "(500) Days of Summer", 2009);
+        movie("2001 A Space Odyssey.mkv", "2001 A Space Odyssey", null);
+    }
+
+    @Test
+    void collectionNumberingOnlyStripsInsideCollections() {
+        movie("Movies/3-Iron (2004).mkv", "3-Iron", 2004);
+        // The accepted trade-off: inside a collection, a title that really starts with "N-" loses it. Metadata
+        // matching by year still finds the right film.
+        movie("Kim Ki-duk Collection/3-Iron (2004).mkv", "Iron", 2004);
     }
 
     @Test
