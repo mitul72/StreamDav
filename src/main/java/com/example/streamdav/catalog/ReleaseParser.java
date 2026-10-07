@@ -123,6 +123,11 @@ public final class ReleaseParser {
                 .anyMatch(EXTRAS_FOLDERS::contains);
     }
 
+    /** True for folders of bonus material and samples, which a scan needn't open. */
+    public static boolean isExtrasFolder(String folder) {
+        return EXTRAS_FOLDERS.contains(normalize(folder).toLowerCase(Locale.ROOT));
+    }
+
     private static ParsedRelease episode(String rawTitle, Integer season, List<Integer> episodes, boolean anime,
                                          List<String> folders) {
         String title = cleanTitle(rawTitle);
