@@ -117,6 +117,12 @@ public final class StreamProxy implements AutoCloseable {
                 exchange.sendResponseHeaders(404, -1);
                 return;
             }
+            if (method.equals("GET")) {
+                // A player that reconnects (to seek, say) has given up on its earlier requests; any still waiting on
+                // the server would otherwise hold their connections until the idle timeout.
+                active.getOrDefault(token, Set.of())
+                        .forEach(relay -> relay.abandonIfWaiting(Duration.ZERO, "the player reconnected"));
+            }
             relay(exchange, token, target, method.equals("HEAD"));
         } catch (IOException e) {
             // Players routinely drop the connection mid-body when they seek or close.

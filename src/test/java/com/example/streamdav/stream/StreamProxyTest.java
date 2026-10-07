@@ -16,7 +16,11 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -218,6 +222,34 @@ class StreamProxyTest {
             URI url = quick.publish(remote.resolve("/slow/clip.mp4"), client, Optional.empty());
 
             assertArrayEquals(media, send(HttpRequest.newBuilder(url)).body(), "1.5 s in total, but never 600 ms idle");
+        }
+    }
+
+    @Test
+    void abandonsStalledRequestsWhenThePlayerReconnects() throws Exception {
+        AtomicInteger calls = new AtomicInteger();
+        upstream.createContext("/seek/", exchange -> {
+            exchange.sendResponseHeaders(200, media.length);
+            exchange.getResponseBody().write(media, 0, 100);
+            exchange.getResponseBody().flush();
+            if (calls.incrementAndGet() == 1) {
+                pause(10000); // the first request stalls
+            } else {
+                exchange.getResponseBody().write(media, 100, media.length - 100);
+            }
+            exchange.close();
+        });
+        try (StreamProxy quick = new StreamProxy(Duration.ofSeconds(30), Duration.ofSeconds(30))) {
+            URI url = quick.publish(remote.resolve("/seek/clip.mp4"), client, Optional.empty());
+            CompletableFuture<HttpResponse<byte[]>> stalled =
+                    client.sendAsync(HttpRequest.newBuilder(url).build(), HttpResponse.BodyHandlers.ofByteArray());
+            Thread.sleep(300);
+            long start = System.nanoTime();
+
+            assertArrayEquals(media, send(HttpRequest.newBuilder(url)).body(), "the new request works");
+            ExecutionException error = assertThrows(ExecutionException.class, () -> stalled.get(2, TimeUnit.SECONDS));
+            assertTrue(error.getCause() instanceof IOException, "the stalled one was cut off, not left for 30 s");
+            assertTrue(System.nanoTime() - start < Duration.ofSeconds(2).toNanos());
         }
     }
 
