@@ -266,8 +266,12 @@ public final class MpvPlayback implements Playback {
         Object value = property.value();
         switch (property.name()) {
             case "time-pos" -> {
+                // Unavailable while loading or switching tracks; keep the last position rather than jumping to 0.
+                if (!(value instanceof Double seconds)) {
+                    return;
+                }
                 // Coalesce: mpv reports this every frame, the UI only needs the latest.
-                if (pendingPosition.getAndSet(value instanceof Double seconds ? seconds : 0.0) == null) {
+                if (pendingPosition.getAndSet(seconds) == null) {
                     Platform.runLater(() -> position.set(Duration.seconds(pendingPosition.getAndSet(null))));
                 }
             }
