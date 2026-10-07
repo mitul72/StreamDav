@@ -155,7 +155,7 @@ public class PlayerController {
 
     private void onStatusChanged(Status status) {
         buffering.setVisible(status == Status.LOADING || status == Status.BUFFERING);
-        playButton.setGraphic((status == Status.PLAYING ? Icon.PAUSE : Icon.PLAY).create(30));
+        playButton.setGraphic((isPlayingOrTrying(status) ? Icon.PAUSE : Icon.PLAY).create(30));
         switch (status) {
             case PLAYING -> {
                 if (resumeFrom.greaterThan(Duration.ZERO)) {
@@ -287,11 +287,16 @@ public class PlayerController {
         if (playback == null || playback.status() == Status.FAILED) {
             return;
         }
-        if (playback.status() == Status.PLAYING) {
+        if (isPlayingOrTrying(playback.status())) {
             playback.pause();
         } else {
             playback.play();
         }
+    }
+
+    /** Loading and buffering count as playing: pressing pause then should pause. */
+    private static boolean isPlayingOrTrying(Status status) {
+        return status == Status.PLAYING || status == Status.BUFFERING || status == Status.LOADING;
     }
 
     @FXML

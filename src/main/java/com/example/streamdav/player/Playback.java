@@ -14,6 +14,7 @@ import java.net.URI;
 /** One file being played by some media engine. Create it, show its view, and dispose it when done. */
 public interface Playback {
 
+    /** {@code BUFFERING} means waiting for data while trying to play; a paused playback is always {@code PAUSED}. */
     enum Status { LOADING, PLAYING, PAUSED, BUFFERING, ENDED, FAILED }
 
     @FunctionalInterface

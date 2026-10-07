@@ -422,10 +422,11 @@ public final class MpvPlayback implements Playback {
             status.set(Status.LOADING);
         } else if (ended) {
             status.set(Status.ENDED);
-        } else if (waiting || seeking) {
-            status.set(Status.BUFFERING);
+        } else if (paused) {
+            // Paused by the user, even if a seek is still loading: the play button must offer to resume.
+            status.set(Status.PAUSED);
         } else {
-            status.set(paused ? Status.PAUSED : Status.PLAYING);
+            status.set(waiting || seeking ? Status.BUFFERING : Status.PLAYING);
         }
     }
 
