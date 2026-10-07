@@ -23,7 +23,8 @@ tasks.withType(JavaCompile).configureEach {
     options.release = 25
 }
 
-def nativeAccessArgs = ['--enable-native-access=javafx.graphics,javafx.media']
+// JavaFX loads native libraries, and the app calls libmpv through the FFM API.
+def nativeAccessArgs = ['--enable-native-access=javafx.graphics,javafx.media,com.example.streamdav']
 
 application {
     mainModule = 'com.example.streamdav'
@@ -46,6 +47,7 @@ dependencies {
 
 test {
     useJUnitPlatform()
+    jvmArgs '--enable-native-access=ALL-UNNAMED'
 }
 
 jlink {
