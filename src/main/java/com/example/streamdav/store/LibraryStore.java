@@ -194,6 +194,18 @@ public final class LibraryStore implements AutoCloseable {
      * found, and files no longer there are dropped.
      */
     public synchronized void replaceFiles(long sourceId, List<FoundFile> found, Instant scannedAt) throws IOException {
+        saveScan(sourceId, found, scannedAt, true);
+    }
+
+    /**
+     * Records a scan that couldn't list every folder: files found are added or updated, but none are dropped, since
+     * the missing ones may only be in the folders that failed.
+     */
+    public synchronized void addFiles(long sourceId, List<FoundFile> found, Instant scannedAt) throws IOException {
+        saveScan(sourceId, found, scannedAt, false);
+    }
+
+    private void saveScan(long sourceId, List<FoundFile> found, Instant scannedAt, boolean complete) throws IOException {
         long scan = scannedAt.toEpochMilli();
         inTransaction(() -> {
             try (PreparedStatement upsert = connection.prepareStatement("""
@@ -214,10 +226,12 @@ public final class LibraryStore implements AutoCloseable {
                 }
                 upsert.executeBatch();
             }
-            try (PreparedStatement delete = connection.prepareStatement("DELETE FROM file WHERE source_id = ? AND scan <> ?")) {
-                delete.setLong(1, sourceId);
-                delete.setLong(2, scan);
-                delete.executeUpdate();
+            if (complete) {
+                try (PreparedStatement delete = connection.prepareStatement("DELETE FROM file WHERE source_id = ? AND scan <> ?")) {
+                    delete.setLong(1, sourceId);
+                    delete.setLong(2, scan);
+                    delete.executeUpdate();
+                }
             }
             try (PreparedStatement mark = connection.prepareStatement("UPDATE source SET last_scan = ? WHERE id = ?")) {
                 mark.setLong(1, scan);
@@ -239,6 +253,12 @@ public final class LibraryStore implements AutoCloseable {
     }
 
     // Matches and metadata
+
+    /** Forgets items that matched nothing, so the next refresh searches for them again (say, with a new API key). */
+    public synchronized void forgetUnmatched() throws IOException {
+        update("DELETE FROM item_match WHERE provider IS NULL", statement -> {
+        });
+    }
 
     public synchronized Map<String, StoredMatch> matches() throws IOException {
         Map<String, Metadata> metadata = new HashMap<>();

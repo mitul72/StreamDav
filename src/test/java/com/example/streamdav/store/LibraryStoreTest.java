@@ -60,6 +60,31 @@ class LibraryStoreTest {
     }
 
     @Test
+    void anIncompleteScanDropsNothing() throws Exception {
+        try (LibraryStore store = LibraryStore.open(dir.resolve("library.db"))) {
+            Source source = store.addSource("s", URI.create("https://dav.example/m/"), "m");
+            store.replaceFiles(source.id(), List.of(found("a.mkv"), found("b.mkv")), Instant.parse("2026-01-01T00:00:00Z"));
+            store.addFiles(source.id(), List.of(found("c.mkv")), Instant.parse("2026-02-01T00:00:00Z"));
+
+            assertEquals(3, store.files().size());
+        }
+    }
+
+    @Test
+    void unmatchedItemsCanBeForgotten() throws Exception {
+        try (LibraryStore store = LibraryStore.open(dir.resolve("library.db"))) {
+            Metadata heat = new Metadata(Metadata.Provider.TMDB, "949", Metadata.Kind.MOVIE, "Heat", List.of(), 1995,
+                    null, null, null, List.of(), null, null, false);
+            store.saveMatch("movie|heat|1995", Optional.of(heat), Instant.now(), false);
+            store.saveMatch("movie|nothing|null", Optional.empty(), Instant.now(), false);
+
+            store.forgetUnmatched();
+
+            assertEquals(java.util.Set.of("movie|heat|1995"), store.matches().keySet());
+        }
+    }
+
+    @Test
     void removingASourceRemovesItsFiles() throws Exception {
         try (LibraryStore store = LibraryStore.open(dir.resolve("library.db"))) {
             Source kept = store.addSource("s", URI.create("https://dav.example/a/"), "a");
