@@ -83,6 +83,7 @@ public final class MpvPlayback implements Playback {
     private boolean seeking;
     private boolean ended;
     private boolean failed;
+    private boolean initialized;
     private boolean updatingFromMpv;
 
     // Frame hand-off between the render thread and the JavaFX thread, without locks. Buffers circulate: the render
@@ -191,6 +192,7 @@ public final class MpvPlayback implements Playback {
             fail("The built-in player couldn't start: " + mpv.errorString(error));
             return;
         }
+        initialized = true;
         mpv.requestLogMessages(handle, "warn");
         try {
             renderContext = mpv.createSoftwareRenderContext(handle);
@@ -435,6 +437,11 @@ public final class MpvPlayback implements Playback {
             return;
         }
         log.warn("mpv playback failed: {}", message);
+        // Stop the core before refusing further commands, or a failure in our rendering would leave the sound
+        // playing with no way to pause it.
+        if (initialized && !closed) {
+            mpv.command(handle, "stop");
+        }
         failed = true;
         errorMessage = message;
         updateStatus();
