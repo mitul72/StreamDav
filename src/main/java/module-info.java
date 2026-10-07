@@ -5,6 +5,7 @@ module com.example.streamdav {
     requires java.net.http;
     requires java.prefs;
     requires java.xml;
+    requires jdk.httpserver;
     requires org.apache.logging.log4j;
 
     opens com.example.streamdav.ui to javafx.fxml;
