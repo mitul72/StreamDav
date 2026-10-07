@@ -57,6 +57,8 @@
                     <Button fx:id="connectButton" styleClass="primary" text="Connect" defaultButton="true"
                             onAction="#connect"/>
                     <ProgressIndicator fx:id="progress" styleClass="small-progress" visible="false"/>
+                    <Label fx:id="progressLabel" styleClass="hint"/>
+                    <Button fx:id="cancelButton" text="Cancel" visible="false" onAction="#cancel"/>
                 </HBox>
                 <Label fx:id="statusLabel" styleClass="error-text" wrapText="true"/>
             </VBox>

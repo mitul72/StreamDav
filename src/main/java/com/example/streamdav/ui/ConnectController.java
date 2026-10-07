@@ -33,9 +33,12 @@ public class ConnectController {
     @FXML private Label passwordHint;
     @FXML private Button connectButton;
     @FXML private ProgressIndicator progress;
+    @FXML private Label progressLabel;
+    @FXML private Button cancelButton;
     @FXML private Label statusLabel;
 
     private Navigator navigator;
+    private Task<?> pending;
 
     void init(Navigator navigator) {
         this.navigator = navigator;
@@ -62,6 +65,7 @@ public class ConnectController {
             }
         });
         removeServerButton.disableProperty().bind(savedServers.getSelectionModel().selectedItemProperty().isNull());
+        cancelButton.managedProperty().bind(cancelButton.visibleProperty());
         savedServers.getItems().setAll(navigator.settings().servers());
         Platform.runLater(urlField::requestFocus);
     }
@@ -89,7 +93,7 @@ public class ConnectController {
             }
         };
         task.setOnSucceeded(event -> {
-            setBusy(false);
+            setBusy(false, null);
             if (save) {
                 navigator.settings().saveServer(name, root.toString(), username, rememberPassword ? password : "");
             }
@@ -97,11 +101,20 @@ public class ConnectController {
             navigator.showBrowser(connection.library(), name, connection.rootListing());
         });
         task.setOnFailed(event -> {
-            setBusy(false);
+            setBusy(false, null);
             statusLabel.setText(Errors.describe(task.getException()));
         });
-        setBusy(true);
+        task.setOnCancelled(event -> setBusy(false, null));
+        pending = task;
+        setBusy(true, "Connecting to " + name + "…");
         navigator.background().execute(task);
+    }
+
+    @FXML
+    private void cancel() {
+        if (pending != null) {
+            pending.cancel();
+        }
     }
 
     @FXML
@@ -152,11 +165,15 @@ public class ConnectController {
         statusLabel.setText("");
     }
 
-    private void setBusy(boolean busy) {
+    private void setBusy(boolean busy, String message) {
         connectButton.setDisable(busy);
         progress.setVisible(busy);
+        progressLabel.setText(busy ? message : "");
+        cancelButton.setVisible(busy);
         if (busy) {
             statusLabel.setText("");
+        } else {
+            pending = null;
         }
     }
 
