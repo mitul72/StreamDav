@@ -23,14 +23,12 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * A loopback HTTP server that relays media from a remote server, adding its credentials.
@@ -54,6 +52,8 @@ public final class StreamProxy implements AutoCloseable {
     private final SecureRandom random = new SecureRandom();
     private final Map<URI, String> tokens = new ConcurrentHashMap<>();
     private final Map<String, Target> targets = new ConcurrentHashMap<>();
+    /** Player connections currently being served, by token. */
+    private final Map<String, Set<Relay>> active = new ConcurrentHashMap<>();
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     private final ScheduledExecutorService watchdog = Executors.newSingleThreadScheduledExecutor(
             Thread.ofPlatform().daemon().name("stream-watchdog").factory());
@@ -76,6 +76,8 @@ public final class StreamProxy implements AutoCloseable {
         server.setExecutor(executor);
         server.createContext(CONTEXT, this::handle);
         server.start();
+        long period = Math.max(1, idleTimeout.toMillis() / 4);
+        watchdog.scheduleAtFixedRate(this::abandonStalledReads, period, period, TimeUnit.MILLISECONDS);
     }
 
     /**
@@ -109,12 +111,13 @@ public final class StreamProxy implements AutoCloseable {
                 exchange.sendResponseHeaders(405, -1);
                 return;
             }
-            Target target = targets.get(token(exchange.getRequestURI().getRawPath()));
+            String token = token(exchange.getRequestURI().getRawPath());
+            Target target = targets.get(token);
             if (target == null) {
                 exchange.sendResponseHeaders(404, -1);
                 return;
             }
-            relay(exchange, target, method.equals("HEAD"));
+            relay(exchange, token, target, method.equals("HEAD"));
         } catch (IOException e) {
             // Players routinely drop the connection mid-body when they seek or close.
             log.debug("Stream connection closed: {}", e.toString());
@@ -123,7 +126,8 @@ public final class StreamProxy implements AutoCloseable {
         }
     }
 
-    private void relay(HttpExchange exchange, Target target, boolean head) throws IOException, InterruptedException {
+    private void relay(HttpExchange exchange, String token, Target target, boolean head)
+            throws IOException, InterruptedException {
         HttpRequest.Builder request = HttpRequest.newBuilder(target.uri())
                 .timeout(headerTimeout)
                 .method(head ? "HEAD" : "GET", HttpRequest.BodyPublishers.noBody());
@@ -172,56 +176,41 @@ public final class StreamProxy implements AutoCloseable {
             }
             // HttpServer's length argument: 0 means chunked, -1 means no body.
             exchange.sendResponseHeaders(status, length < 0 ? 0 : length == 0 ? -1 : length);
-            copy(body, exchange.getResponseBody(), target.uri());
+            copy(body, exchange.getResponseBody(), token);
         }
     }
 
-    /**
-     * Copies the body, giving up if the server sends nothing for {@link #idleTimeout}. Only time spent waiting for
-     * the server counts: a paused player that stops reading is backpressure, not a stall.
-     */
-    private void copy(InputStream body, OutputStream out, URI source) throws IOException {
-        AtomicLong waitingSince = new AtomicLong(-1);
-        AtomicBoolean timedOut = new AtomicBoolean();
-        Thread reader = Thread.currentThread();
-        long period = Math.max(1, idleTimeout.toMillis() / 4);
-        ScheduledFuture<?> check = watchdog.scheduleAtFixedRate(() -> {
-            long since = waitingSince.get();
-            if (since >= 0 && System.nanoTime() - since > idleTimeout.toNanos() && timedOut.compareAndSet(false, true)) {
-                log.warn("{} stopped sending data; closing the stream", source);
-                // Closing alone doesn't wake a read that's already blocked; interrupting this request's thread does.
-                try {
-                    body.close();
-                } catch (IOException ignored) {
-                    // The interrupt ends the read either way.
-                }
-                reader.interrupt();
-            }
-        }, period, period, TimeUnit.MILLISECONDS);
+    /** Copies the body, giving up if the server stops sending (see {@link #abandonStalledReads}). */
+    private void copy(InputStream body, OutputStream out, String token) throws IOException {
+        Relay relay = new Relay();
+        Set<Relay> relays = active.computeIfAbsent(token, key -> ConcurrentHashMap.newKeySet());
+        relays.add(relay);
         try {
             byte[] buffer = new byte[64 * 1024];
-            while (true) {
-                waitingSince.set(System.nanoTime());
-                int read = body.read(buffer);
-                waitingSince.set(-1);
-                if (read < 0) {
-                    return;
-                }
+            int read;
+            while ((read = relay.read(body, buffer)) >= 0) {
                 out.write(buffer, 0, read);
                 // Pass data on as it arrives; buffering it would starve a player while the server is slow.
                 out.flush();
             }
-        } catch (IOException e) {
-            if (timedOut.get()) {
-                throw new IOException(source + " stopped sending data", e);
-            }
-            throw e;
         } finally {
-            check.cancel(false);
-            if (timedOut.get()) {
-                Thread.interrupted(); // the stream is over; don't leak the interrupt into the response cleanup
-            }
+            relays.remove(relay);
         }
+    }
+
+    /**
+     * Abandons reads that have waited on a silent server for {@link #idleTimeout}. Only time waiting for the server
+     * counts: a paused player that stops reading is backpressure, not a stall.
+     */
+    private void abandonStalledReads() {
+        active.forEach((token, relays) -> {
+            for (Relay relay : relays) {
+                if (relay.abandonIfWaiting(idleTimeout, "it sent nothing for " + idleTimeout.toSeconds() + " s")) {
+                    Target target = targets.get(token);
+                    log.warn("{} stopped sending data; closing the stream", target == null ? token : target.uri());
+                }
+            }
+        });
     }
 
     private String newToken() {
