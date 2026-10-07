@@ -27,6 +27,7 @@ import java.lang.foreign.Arena;
 import java.lang.foreign.MemorySegment;
 import java.net.URI;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Queue;
@@ -94,6 +95,8 @@ public final class MpvPlayback implements Playback {
     private final AtomicReference<Double> pendingPosition = new AtomicReference<>();
     /** The buffer being rendered into; only touched by the render thread. */
     private Frame back;
+    /** The size of the last frame rendered; only touched by the render thread. */
+    private int[] renderedSize;
     private PixelBuffer<ByteBuffer> pixelBuffer;
     private volatile long videoWidth;
     private volatile long videoHeight;
@@ -157,8 +160,15 @@ public final class MpvPlayback implements Playback {
         imageView.fitHeightProperty().bind(view.heightProperty());
         view.getChildren().add(imageView);
         view.setMinSize(0, 0);
-        view.widthProperty().addListener((observable, old, width) -> viewWidth = width.doubleValue() * outputScale());
-        view.heightProperty().addListener((observable, old, height) -> viewHeight = height.doubleValue() * outputScale());
+        // A new size needs a new frame, even while paused, or the old one is stretched until playback moves on.
+        view.widthProperty().addListener((observable, old, width) -> {
+            viewWidth = width.doubleValue() * outputScale();
+            renderRequests.release();
+        });
+        view.heightProperty().addListener((observable, old, height) -> {
+            viewHeight = height.doubleValue() * outputScale();
+            renderRequests.release();
+        });
 
         handle = mpv.create();
         if (handle.equals(MemorySegment.NULL)) {
@@ -302,13 +312,13 @@ public final class MpvPlayback implements Playback {
             if (closed) {
                 return;
             }
-            if ((mpv.renderContextUpdate(renderContext) & LibMpv.RENDER_UPDATE_FRAME) == 0) {
-                continue;
-            }
+            boolean newFrame = (mpv.renderContextUpdate(renderContext) & LibMpv.RENDER_UPDATE_FRAME) != 0;
             int[] size = surfaceSize();
-            if (size == null) {
+            // Without a new frame, only redraw the current one when the size it's needed at has changed.
+            if (size == null || !newFrame && (renderedSize == null || Arrays.equals(size, renderedSize))) {
                 continue;
             }
+            renderedSize = size;
             if (back == null) {
                 back = spare.poll();
             }
