@@ -38,8 +38,8 @@ import static java.lang.foreign.ValueLayout.JAVA_BYTE;
 /**
  * Plays through an embedded libmpv, so anything mpv supports (MKV, HEVC, AV1, subtitles, ...) plays in the app.
  *
- * <p>mpv's software renderer draws each frame into a staging buffer on a render thread; the JavaFX thread copies it
- * into the image on screen. Frames are rendered no larger than the video, the view or {@link #MAX_WIDTH} x
+ * <p>mpv's software renderer draws each frame into a back buffer on a render thread, which is then swapped with the
+ * front buffer that the JavaFX thread copies into the image on screen. Frames are rendered no larger than the video, the view or {@link #MAX_WIDTH} x
  * {@link #MAX_HEIGHT}, whichever is smallest, and the GPU scales them up from there.
  */
 public final class MpvPlayback implements Playback {
@@ -85,12 +85,55 @@ public final class MpvPlayback implements Playback {
     private final Object frameLock = new Object();
     private final AtomicBoolean framePending = new AtomicBoolean();
     private final AtomicReference<Double> pendingPosition = new AtomicReference<>();
-    private Frame staging;
+    /** The latest complete frame, read by the JavaFX thread; guarded by frameLock. */
+    private Frame front;
+    /** The frame being rendered; only touched by the render thread. */
+    private Frame back;
     private PixelBuffer<ByteBuffer> pixelBuffer;
     private volatile long videoWidth;
     private volatile long videoHeight;
     private volatile double viewWidth = MAX_WIDTH;
     private volatile double viewHeight = MAX_HEIGHT;
+
+    private final FrameStats stats = new FrameStats();
+
+    /** Debug-level timing of the frame pipeline, logged every few seconds. */
+    private static final class FrameStats {
+        private long since = System.nanoTime();
+        private int rendered;
+        private int shown;
+        private long renderNanos;
+        private long alphaNanos;
+        private int[] size;
+
+        synchronized void rendered(long render, long alpha, int[] frameSize) {
+            rendered++;
+            renderNanos += render;
+            alphaNanos += alpha;
+            size = frameSize;
+            report();
+        }
+
+        synchronized void shown() {
+            shown++;
+        }
+
+        private void report() {
+            double seconds = (System.nanoTime() - since) / 1e9;
+            if (seconds < 5 || !log.isDebugEnabled()) {
+                return;
+            }
+            log.debug("{}x{}: rendered {} fps, shown {} fps, mpv render {} ms, alpha {} ms",
+                    size[0], size[1], Math.round(rendered / seconds), Math.round(shown / seconds),
+                    String.format(Locale.ROOT, "%.1f", renderNanos / 1e6 / rendered),
+                    String.format(Locale.ROOT, "%.1f", alphaNanos / 1e6 / rendered));
+            since = System.nanoTime();
+            rendered = 0;
+            shown = 0;
+            renderNanos = 0;
+            alphaNanos = 0;
+        }
+    }
 
     private record Frame(int width, int height, MemorySegment pixels, MemorySegment target, Arena arena) {
         static Frame allocate(int width, int height) {
@@ -261,19 +304,27 @@ public final class MpvPlayback implements Playback {
             if (size == null) {
                 continue;
             }
+            // mpv_render_context_render waits until the frame is due, so render into the back buffer without holding
+            // the lock; the JavaFX thread only ever waits for the swap.
+            if (back == null || back.width() != size[0] || back.height() != size[1]) {
+                if (back != null) {
+                    back.arena().close();
+                }
+                back = Frame.allocate(size[0], size[1]);
+            }
+            long renderStart = System.nanoTime();
+            mpv.render(renderContext, back.target());
+            long renderEnd = System.nanoTime();
+            // mpv leaves the fourth byte of each "bgr0" pixel undefined; JavaFX reads it as alpha.
+            MemorySegment pixels = back.pixels();
+            for (long offset = 3; offset < pixels.byteSize(); offset += 4) {
+                pixels.set(JAVA_BYTE, offset, (byte) 0xFF);
+            }
+            stats.rendered(renderEnd - renderStart, System.nanoTime() - renderEnd, size);
             synchronized (frameLock) {
-                if (staging == null || staging.width() != size[0] || staging.height() != size[1]) {
-                    if (staging != null) {
-                        staging.arena().close();
-                    }
-                    staging = Frame.allocate(size[0], size[1]);
-                }
-                mpv.render(renderContext, staging.target());
-                // mpv leaves the fourth byte of each "bgr0" pixel undefined; JavaFX reads it as alpha.
-                MemorySegment pixels = staging.pixels();
-                for (long offset = 3; offset < pixels.byteSize(); offset += 4) {
-                    pixels.set(JAVA_BYTE, offset, (byte) 0xFF);
-                }
+                Frame rendered = back;
+                back = front;
+                front = rendered;
             }
             if (framePending.compareAndSet(false, true)) {
                 Platform.runLater(this::showFrame);
@@ -301,7 +352,7 @@ public final class MpvPlayback implements Playback {
     private void showFrame() {
         framePending.set(false);
         synchronized (frameLock) {
-            Frame frame = staging;
+            Frame frame = front;
             if (frame == null || closed) {
                 return;
             }
@@ -310,6 +361,7 @@ public final class MpvPlayback implements Playback {
                 pixelBuffer = new PixelBuffer<>(frame.width(), frame.height(), buffer, PixelFormat.getByteBgraPreInstance());
                 imageView.setImage(new WritableImage(pixelBuffer));
             }
+            stats.shown();
             pixelBuffer.updateBuffer(buffer -> {
                 MemorySegment.copy(frame.pixels(), 0, MemorySegment.ofBuffer(buffer.getBuffer()), 0, frame.pixels().byteSize());
                 return null;
@@ -478,10 +530,13 @@ public final class MpvPlayback implements Playback {
         }
         mpv.terminateDestroy(handle);
         synchronized (frameLock) {
-            if (staging != null) {
-                staging.arena().close();
-                staging = null;
+            for (Frame frame : new Frame[] {front, back}) {
+                if (frame != null) {
+                    frame.arena().close();
+                }
             }
+            front = null;
+            back = null;
         }
         arena.close();
     }
