@@ -95,16 +95,8 @@ public record LibraryIndex(List<Item> items) {
     public static LibraryIndex build(List<StoredFile> stored, Map<Long, String> serverBySource,
                                      Map<String, StoredMatch> matches, Function<Metadata, List<EpisodeInfo>> episodes) {
         Map<RemoteFile, StoredFile> byFile = new HashMap<>();
-        List<ScannedFile> scanned = new ArrayList<>();
-        for (StoredFile file : stored) {
-            // Re-parsed every time, so parser improvements apply to files scanned before them.
-            if (ReleaseParser.isExtra(file.file().name(), file.folders())) {
-                continue;
-            }
-            byFile.put(file.file(), file);
-            scanned.add(new ScannedFile(file.file(), file.folders(), ReleaseParser.parse(file.file().name(), file.folders())));
-        }
-        Catalog catalog = Catalog.of(scanned);
+        stored.forEach(file -> byFile.put(file.file(), file));
+        Catalog catalog = catalog(stored);
         Function<ScannedFile, FileRef> ref = file -> {
             StoredFile source = byFile.get(file.file());
             return new FileRef(serverBySource.get(source.sourceId()), file.file(), source.added());
@@ -133,6 +125,17 @@ public record LibraryIndex(List<Item> items) {
         return new LibraryIndex(builders.values().stream()
                 .map(builder -> builder.build(builder.metadata.map(episodes).orElse(List.of())))
                 .toList());
+    }
+
+    /** Stored files parsed and grouped. Parsed every time, so parser improvements apply to files scanned before them. */
+    public static Catalog catalog(List<StoredFile> stored) {
+        List<ScannedFile> scanned = new ArrayList<>();
+        for (StoredFile file : stored) {
+            if (!ReleaseParser.isExtra(file.file().name(), file.folders())) {
+                scanned.add(new ScannedFile(file.file(), file.folders(), ReleaseParser.parse(file.file().name(), file.folders())));
+            }
+        }
+        return Catalog.of(scanned);
     }
 
     private static Optional<Metadata> metadata(Map<String, StoredMatch> matches, String key) {
