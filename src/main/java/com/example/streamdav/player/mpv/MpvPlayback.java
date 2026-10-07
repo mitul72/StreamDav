@@ -29,6 +29,8 @@ import java.net.URI;
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Locale;
+import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -84,9 +86,10 @@ public final class MpvPlayback implements Playback {
 
     // Frame hand-off between the render thread and the JavaFX thread, without locks. Buffers circulate: the render
     // thread draws into its own buffer and swaps it into `ready`; the JavaFX thread takes the ready frame, copies it
-    // and puts the buffer in `free` for reuse. A frame the JavaFX thread hasn't taken yet is replaced by a newer one.
+    // and returns the buffer to `spare` for reuse. A frame the JavaFX thread hasn't taken yet is replaced by a newer
+    // one. At most three buffers exist: one being rendered, one ready and one being copied.
     private final AtomicReference<Frame> ready = new AtomicReference<>();
-    private final AtomicReference<Frame> free = new AtomicReference<>();
+    private final Queue<Frame> spare = new ConcurrentLinkedQueue<>();
     private final AtomicBoolean framePending = new AtomicBoolean();
     private final AtomicReference<Double> pendingPosition = new AtomicReference<>();
     /** The buffer being rendered into; only touched by the render thread. */
@@ -307,7 +310,7 @@ public final class MpvPlayback implements Playback {
                 continue;
             }
             if (back == null) {
-                back = free.getAndSet(null);
+                back = spare.poll();
             }
             if (back == null || back.width() != size[0] || back.height() != size[1]) {
                 if (back != null) {
@@ -368,7 +371,7 @@ public final class MpvPlayback implements Playback {
             MemorySegment.copy(frame.pixels(), 0, MemorySegment.ofBuffer(buffer.getBuffer()), 0, frame.pixels().byteSize());
             return null;
         });
-        release(free.getAndSet(frame));
+        spare.offer(frame);
     }
 
     private static void release(Frame frame) {
@@ -540,7 +543,9 @@ public final class MpvPlayback implements Playback {
         // Both threads have stopped or run here (dispose is on the JavaFX thread), so every buffer is idle.
         release(back);
         release(ready.getAndSet(null));
-        release(free.getAndSet(null));
+        for (Frame frame = spare.poll(); frame != null; frame = spare.poll()) {
+            release(frame);
+        }
         back = null;
         arena.close();
     }
