@@ -1,8 +1,9 @@
 package com.example.streamdav.ui;
 
-import com.example.streamdav.library.MediaKind;
 import com.example.streamdav.library.MediaLibrary;
 import com.example.streamdav.library.RemoteFile;
+import com.example.streamdav.player.Playback;
+import com.example.streamdav.player.Players;
 import com.example.streamdav.settings.Settings;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Parent;
@@ -30,6 +31,7 @@ public final class Navigator {
     private final Stage stage;
     private final Settings settings;
     private final MediaLibrary.Connector connector;
+    private final Players players;
     private final ExecutorService background = Executors.newVirtualThreadPerTaskExecutor();
 
     private MediaLibrary library;
@@ -38,10 +40,11 @@ public final class Navigator {
     private BrowserController browser;
     private PlayerController player;
 
-    public Navigator(Stage stage, Settings settings, MediaLibrary.Connector connector) {
+    public Navigator(Stage stage, Settings settings, MediaLibrary.Connector connector, Players players) {
         this.stage = stage;
         this.settings = settings;
         this.connector = connector;
+        this.players = players;
     }
 
     public static String stylesheet() {
@@ -82,13 +85,14 @@ public final class Navigator {
 
     /** Plays in the built-in player when it supports the format, otherwise hands off to an external player. */
     void play(RemoteFile file) {
-        if (!MediaKind.playsInBuiltInPlayer(file.name())) {
+        Optional<Playback.Factory> engine = players.forFile(file.name());
+        if (engine.isEmpty()) {
             openExternally(file);
             return;
         }
         Loaded<PlayerController> view = load("player-view.fxml");
         player = view.controller();
-        player.init(this, file, library.streamUrl(file));
+        player.init(this, file, engine.get(), library.streamUrl(file));
         show(view.root(), file.name() + " — " + APP_NAME);
         player.focus();
     }

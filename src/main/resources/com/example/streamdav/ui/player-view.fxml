@@ -11,12 +11,10 @@
 <?import javafx.scene.layout.Region?>
 <?import javafx.scene.layout.StackPane?>
 <?import javafx.scene.layout.VBox?>
-<?import javafx.scene.media.MediaView?>
 
 <StackPane fx:id="root" styleClass="player-view" focusTraversable="true"
            xmlns="http://javafx.com/javafx" xmlns:fx="http://javafx.com/fxml"
            fx:controller="com.example.streamdav.ui.PlayerController">
-    <MediaView fx:id="mediaView" preserveRatio="true"/>
     <VBox fx:id="audioPane" styleClass="audio-pane" visible="false" mouseTransparent="true">
         <Label fx:id="audioTitle" styleClass="audio-title" wrapText="true"/>
     </VBox>

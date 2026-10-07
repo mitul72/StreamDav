@@ -1,11 +1,14 @@
 package com.example.streamdav.ui;
 
 import com.example.streamdav.library.RemoteFile;
+import com.example.streamdav.player.Playback;
+import com.example.streamdav.player.Playback.Status;
 import javafx.animation.FadeTransition;
 import javafx.animation.PauseTransition;
 import javafx.beans.value.ChangeListener;
 import javafx.fxml.FXML;
 import javafx.scene.Cursor;
+import javafx.scene.Node;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ProgressIndicator;
@@ -16,25 +19,17 @@ import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
-import javafx.scene.media.Media;
-import javafx.scene.media.MediaException;
-import javafx.scene.media.MediaPlayer;
-import javafx.scene.media.MediaView;
 import javafx.util.Duration;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 import java.net.URI;
 
 public class PlayerController {
-    private static final Logger log = LogManager.getLogger(PlayerController.class);
     private static final double SKIP_SECONDS = 10;
     private static final double VOLUME_STEP = 0.05;
     /** Positions this close to either end aren't worth resuming from. */
     private static final double RESUME_MARGIN_SECONDS = 30;
 
     @FXML private StackPane root;
-    @FXML private MediaView mediaView;
     @FXML private VBox audioPane;
     @FXML private Label audioTitle;
     @FXML private ProgressIndicator buffering;
@@ -60,13 +55,12 @@ public class PlayerController {
             fullScreenButton.setGraphic((fullScreen ? Icon.EXIT_FULLSCREEN : Icon.FULLSCREEN).create(24));
     private Navigator navigator;
     private RemoteFile file;
-    private MediaPlayer player;
-    private boolean audioOnly;
-    private boolean failed;
+    private Playback playback;
+    private Duration resumeFrom = Duration.ZERO;
     private boolean updatingSeekSlider;
     private boolean closed;
 
-    void init(Navigator navigator, RemoteFile file, URI streamUrl) {
+    void init(Navigator navigator, RemoteFile file, Playback.Factory engine, URI streamUrl) {
         this.navigator = navigator;
         this.file = file;
         titleLabel.setText(file.name());
@@ -78,8 +72,6 @@ public class PlayerController {
         externalButton.setGraphic(Icon.EXTERNAL.create(22));
         fullScreenListener.changed(null, null, navigator.stage().isFullScreen());
         navigator.stage().fullScreenProperty().addListener(fullScreenListener);
-        mediaView.fitWidthProperty().bind(root.widthProperty());
-        mediaView.fitHeightProperty().bind(root.heightProperty());
 
         fadeOut.setNode(overlay);
         fadeOut.setToValue(0);
@@ -90,24 +82,18 @@ public class PlayerController {
         root.setOnMouseClicked(this::onMouseClicked);
         configureSeekSlider();
 
-        try {
-            Media media = new Media(streamUrl.toString());
-            media.setOnError(() -> showError(media.getError()));
-            player = new MediaPlayer(media);
-        } catch (MediaException e) {
-            showError(e);
-            return;
-        }
-        player.setOnReady(this::onReady);
-        player.setOnError(() -> showError(player.getError()));
-        player.setOnEndOfMedia(this::onEndOfMedia);
-        player.statusProperty().addListener((observable, old, status) -> onStatusChanged(status));
-        player.currentTimeProperty().addListener((observable, old, time) -> updatePosition(time));
-        player.muteProperty().addListener((observable, old, muted) ->
+        long resumeMillis = navigator.settings().resumeMillis(file.uri());
+        resumeFrom = Duration.millis(resumeMillis);
+        playback = engine.open(streamUrl, resumeFrom);
+        root.getChildren().addFirst(playback.view());
+        playback.statusProperty().addListener((observable, old, status) -> onStatusChanged(status));
+        playback.positionProperty().addListener((observable, old, time) -> updatePosition(time));
+        playback.durationProperty().addListener((observable, old, total) -> onDurationChanged(total));
+        playback.audioOnlyProperty().addListener((observable, old, audio) -> audioPane.setVisible(audio));
+        playback.muteProperty().addListener((observable, old, muted) ->
                 muteButton.setGraphic((muted ? Icon.MUTED : Icon.VOLUME).create(22)));
-        volumeSlider.valueProperty().bindBidirectional(player.volumeProperty());
-        mediaView.setMediaPlayer(player);
-        buffering.setVisible(true);
+        volumeSlider.valueProperty().bindBidirectional(playback.volumeProperty());
+        onStatusChanged(playback.status());
     }
 
     void focus() {
@@ -124,13 +110,14 @@ public class PlayerController {
         toastTimer.stop();
         navigator.stage().fullScreenProperty().removeListener(fullScreenListener);
         navigator.stage().setFullScreen(false);
-        if (player != null) {
+        if (playback != null) {
             saveProgress();
-            player.dispose();
+            playback.dispose();
         }
     }
 
     private void configureSeekSlider() {
+        seekSlider.setDisable(true);
         seekSlider.valueChangingProperty().addListener((observable, wasChanging, changing) -> {
             if (!changing) {
                 seek(seekSlider.getValue());
@@ -149,47 +136,32 @@ public class PlayerController {
         });
     }
 
-    private void onReady() {
-        buffering.setVisible(false);
-        Media media = player.getMedia();
-        audioOnly = media.getWidth() == 0 && media.getHeight() == 0;
-        audioPane.setVisible(audioOnly);
-        mediaView.setVisible(!audioOnly);
+    private void onStatusChanged(Status status) {
+        buffering.setVisible(status == Status.LOADING || status == Status.BUFFERING);
+        playButton.setGraphic((status == Status.PLAYING ? Icon.PAUSE : Icon.PLAY).create(30));
+        switch (status) {
+            case PLAYING -> {
+                if (resumeFrom.greaterThan(Duration.ZERO)) {
+                    toast("Resumed from " + Format.duration(resumeFrom));
+                    resumeFrom = Duration.ZERO;
+                }
+                scheduleHide();
+            }
+            case ENDED -> {
+                navigator.settings().clearResume(file.uri());
+                showControls();
+            }
+            case FAILED -> showError(playback.errorMessage());
+            default -> showControls();
+        }
+    }
 
-        Duration total = media.getDuration();
+    private void onDurationChanged(Duration total) {
         seekSlider.setDisable(!isKnown(total));
         if (isKnown(total)) {
             seekSlider.setMax(total.toSeconds());
-            long resumeMillis = navigator.settings().resumeMillis(file.uri());
-            if (resumeMillis > 0 && resumeMillis / 1000.0 < total.toSeconds() - RESUME_MARGIN_SECONDS) {
-                player.seek(Duration.millis(resumeMillis));
-                toast("Resumed from " + Format.duration(Duration.millis(resumeMillis)));
-            }
         }
-        updatePosition(player.getCurrentTime());
-        player.play();
-    }
-
-    private void onStatusChanged(MediaPlayer.Status status) {
-        switch (status) {
-            case PLAYING -> {
-                playButton.setGraphic(Icon.PAUSE.create(30));
-                buffering.setVisible(false);
-                scheduleHide();
-            }
-            case STALLED -> buffering.setVisible(true);
-            default -> {
-                playButton.setGraphic(Icon.PLAY.create(30));
-                buffering.setVisible(false);
-                showControls();
-            }
-        }
-    }
-
-    private void onEndOfMedia() {
-        navigator.settings().clearResume(file.uri());
-        player.stop();
-        showControls();
+        updatePosition(playback.positionProperty().get());
     }
 
     private void updatePosition(Duration time) {
@@ -202,15 +174,15 @@ public class PlayerController {
     }
 
     private String totalTime() {
-        return Format.duration(player == null ? null : player.getTotalDuration());
+        return Format.duration(playback == null ? null : playback.durationProperty().get());
     }
 
     private void saveProgress() {
-        Duration total = player.getTotalDuration();
-        if (failed || !isKnown(total)) {
+        Duration total = playback.durationProperty().get();
+        if (playback.status() == Status.FAILED || !isKnown(total)) {
             return;
         }
-        double position = player.getCurrentTime().toSeconds();
+        double position = playback.positionProperty().get().toSeconds();
         if (position < RESUME_MARGIN_SECONDS || position > total.toSeconds() - RESUME_MARGIN_SECONDS) {
             navigator.settings().clearResume(file.uri());
         } else {
@@ -244,7 +216,7 @@ public class PlayerController {
 
     private void onMouseClicked(MouseEvent event) {
         // Only clicks on the picture itself; buttons and sliders handle their own.
-        if (event.getButton() != MouseButton.PRIMARY || (event.getTarget() != root && event.getTarget() != mediaView)) {
+        if (event.getButton() != MouseButton.PRIMARY || !isOnPicture(event.getTarget())) {
             return;
         }
         if (event.getClickCount() == 2) {
@@ -255,22 +227,31 @@ public class PlayerController {
         }
     }
 
+    private boolean isOnPicture(Object target) {
+        for (Node node = target instanceof Node n ? n : null; node != null; node = node.getParent()) {
+            if (node == playback.view()) {
+                return true;
+            }
+        }
+        return target == root;
+    }
+
     @FXML
     private void togglePlay() {
-        if (player == null || failed) {
+        if (playback == null || playback.status() == Status.FAILED) {
             return;
         }
-        if (player.getStatus() == MediaPlayer.Status.PLAYING) {
-            player.pause();
+        if (playback.status() == Status.PLAYING) {
+            playback.pause();
         } else {
-            player.play();
+            playback.play();
         }
     }
 
     @FXML
     private void toggleMute() {
-        if (player != null) {
-            player.setMute(!player.isMute());
+        if (playback != null) {
+            playback.muteProperty().set(!playback.muteProperty().get());
         }
     }
 
@@ -281,8 +262,8 @@ public class PlayerController {
 
     @FXML
     private void openExternally() {
-        if (player != null && !failed) {
-            player.pause();
+        if (playback != null && playback.status() == Status.PLAYING) {
+            playback.pause();
         }
         navigator.openExternally(file);
     }
@@ -297,23 +278,23 @@ public class PlayerController {
     }
 
     private void seek(double seconds) {
-        if (player != null && !failed) {
-            player.seek(Duration.seconds(seconds));
+        if (playback != null && playback.status() != Status.FAILED) {
+            playback.seek(Duration.seconds(seconds));
         }
     }
 
     private void skip(double seconds) {
-        if (player == null || failed || !isKnown(player.getTotalDuration())) {
+        if (playback == null || !isKnown(playback.durationProperty().get())) {
             return;
         }
-        double target = player.getCurrentTime().toSeconds() + seconds;
-        seek(Math.clamp(target, 0, player.getTotalDuration().toSeconds()));
+        double target = playback.positionProperty().get().toSeconds() + seconds;
+        seek(Math.clamp(target, 0, playback.durationProperty().get().toSeconds()));
     }
 
     private void changeVolume(double delta) {
-        if (player != null) {
-            player.setMute(false);
-            player.setVolume(Math.clamp(player.getVolume() + delta, 0, 1));
+        if (playback != null) {
+            playback.muteProperty().set(false);
+            playback.volumeProperty().set(Math.clamp(playback.volumeProperty().get() + delta, 0, 1));
         }
     }
 
@@ -340,7 +321,7 @@ public class PlayerController {
     }
 
     private boolean isPlayingVideo() {
-        return player != null && !failed && !audioOnly && player.getStatus() == MediaPlayer.Status.PLAYING;
+        return playback != null && playback.status() == Status.PLAYING && !playback.audioOnlyProperty().get();
     }
 
     private void toast(String message) {
@@ -349,29 +330,11 @@ public class PlayerController {
         toastTimer.playFromStart();
     }
 
-    private void showError(MediaException error) {
-        if (failed) {
-            return;
-        }
-        failed = true;
-        log.warn("Playback failed for {}", file.uri(), error);
-        buffering.setVisible(false);
+    private void showError(String message) {
         controls.setVisible(false);
         showControls();
-        errorLabel.setText(describe(error) + "\nYou can open it in an external player such as mpv or VLC instead.");
+        errorLabel.setText(message + "\nYou can open it in an external player such as mpv or VLC instead.");
         errorPane.setVisible(true);
-    }
-
-    private static String describe(MediaException error) {
-        if (error == null) {
-            return "Playback failed.";
-        }
-        return switch (error.getType()) {
-            case MEDIA_UNSUPPORTED, OPERATION_UNSUPPORTED -> "The built-in player can't decode this file.";
-            case MEDIA_INACCESSIBLE, MEDIA_UNAVAILABLE -> "The file couldn't be loaded from the server.";
-            case MEDIA_CORRUPTED -> "The file appears to be damaged.";
-            default -> "Playback failed: " + error.getMessage();
-        };
     }
 
     private static boolean isKnown(Duration duration) {
