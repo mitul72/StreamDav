@@ -20,7 +20,8 @@ class SettingsTest {
 
     @BeforeEach
     void setUp() {
-        node = Preferences.userRoot().node("com/example/streamdav-test/" + UUID.randomUUID());
+        // A single uniquely named node, so removing it in tearDown leaves nothing behind.
+        node = Preferences.userRoot().node("com/example/streamdav-test-" + UUID.randomUUID());
         settings = new Settings(node);
     }
 
