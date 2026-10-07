@@ -43,6 +43,17 @@ cd StreamDav
 3. Browse and select the media content you wish to stream.
 4. Enjoy your media content streamed directly from your WebDAV server.
 
+## Playback
+StreamDav plays media in the app with [mpv](https://mpv.io) when libmpv is installed: MKV, HEVC, AV1, multiple audio tracks and subtitles all work.
+
+- Linux: install mpv with your package manager (e.g. `pacman -S mpv` or `apt install libmpv2`).
+- macOS: `brew install mpv`.
+- Windows: put `libmpv-2.dll` on your `PATH`.
+
+To use a libmpv in another location, start the app with `-Dstreamdav.libmpv=/path/to/libmpv`.
+
+Without libmpv, MP4, M4V, MP3 and WAV files play in the JavaFX player, and other formats open in an external player such as mpv or VLC.
+
 ## Contributing
 Contributions are welcome! If you would like to contribute, please follow these steps:
 1. Fork the repository.
