@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static java.lang.foreign.ValueLayout.JAVA_BYTE;
@@ -38,8 +39,8 @@ import static java.lang.foreign.ValueLayout.JAVA_BYTE;
 /**
  * Plays through an embedded libmpv, so anything mpv supports (MKV, HEVC, AV1, subtitles, ...) plays in the app.
  *
- * <p>mpv's software renderer draws each frame into a back buffer on a render thread, which is then swapped with the
- * front buffer that the JavaFX thread copies into the image on screen. Frames are rendered no larger than the video, the view or {@link #MAX_WIDTH} x
+ * <p>mpv's software renderer draws each frame on a render thread, which hands it to the JavaFX thread through a
+ * lock-free slot; the JavaFX thread copies it into the image on screen. Frames are rendered no larger than the video, the view or {@link #MAX_WIDTH} x
  * {@link #MAX_HEIGHT}, whichever is smallest, and the GPU scales them up from there.
  */
 public final class MpvPlayback implements Playback {
@@ -81,13 +82,14 @@ public final class MpvPlayback implements Playback {
     private boolean failed;
     private boolean updatingFromMpv;
 
-    // Frame hand-off between the render thread and the JavaFX thread.
-    private final Object frameLock = new Object();
+    // Frame hand-off between the render thread and the JavaFX thread, without locks. Buffers circulate: the render
+    // thread draws into its own buffer and swaps it into `ready`; the JavaFX thread takes the ready frame, copies it
+    // and puts the buffer in `free` for reuse. A frame the JavaFX thread hasn't taken yet is replaced by a newer one.
+    private final AtomicReference<Frame> ready = new AtomicReference<>();
+    private final AtomicReference<Frame> free = new AtomicReference<>();
     private final AtomicBoolean framePending = new AtomicBoolean();
     private final AtomicReference<Double> pendingPosition = new AtomicReference<>();
-    /** The latest complete frame, read by the JavaFX thread; guarded by frameLock. */
-    private Frame front;
-    /** The frame being rendered; only touched by the render thread. */
+    /** The buffer being rendered into; only touched by the render thread. */
     private Frame back;
     private PixelBuffer<ByteBuffer> pixelBuffer;
     private volatile long videoWidth;
@@ -97,16 +99,17 @@ public final class MpvPlayback implements Playback {
 
     private final FrameStats stats = new FrameStats();
 
-    /** Debug-level timing of the frame pipeline, logged every few seconds. */
+    /** Debug-level timing of the frame pipeline, logged every few seconds by the render thread. */
     private static final class FrameStats {
+        private final AtomicInteger shown = new AtomicInteger();
+        // The rest is only touched by the render thread.
         private long since = System.nanoTime();
         private int rendered;
-        private int shown;
         private long renderNanos;
         private long alphaNanos;
         private int[] size;
 
-        synchronized void rendered(long render, long alpha, int[] frameSize) {
+        void rendered(long render, long alpha, int[] frameSize) {
             rendered++;
             renderNanos += render;
             alphaNanos += alpha;
@@ -114,8 +117,8 @@ public final class MpvPlayback implements Playback {
             report();
         }
 
-        synchronized void shown() {
-            shown++;
+        void shown() {
+            shown.incrementAndGet();
         }
 
         private void report() {
@@ -124,12 +127,11 @@ public final class MpvPlayback implements Playback {
                 return;
             }
             log.debug("{}x{}: rendered {} fps, shown {} fps, mpv render {} ms, alpha {} ms",
-                    size[0], size[1], Math.round(rendered / seconds), Math.round(shown / seconds),
+                    size[0], size[1], Math.round(rendered / seconds), Math.round(shown.getAndSet(0) / seconds),
                     String.format(Locale.ROOT, "%.1f", renderNanos / 1e6 / rendered),
                     String.format(Locale.ROOT, "%.1f", alphaNanos / 1e6 / rendered));
             since = System.nanoTime();
             rendered = 0;
-            shown = 0;
             renderNanos = 0;
             alphaNanos = 0;
         }
@@ -304,8 +306,9 @@ public final class MpvPlayback implements Playback {
             if (size == null) {
                 continue;
             }
-            // mpv_render_context_render waits until the frame is due, so render into the back buffer without holding
-            // the lock; the JavaFX thread only ever waits for the swap.
+            if (back == null) {
+                back = free.getAndSet(null);
+            }
             if (back == null || back.width() != size[0] || back.height() != size[1]) {
                 if (back != null) {
                     back.arena().close();
@@ -321,11 +324,8 @@ public final class MpvPlayback implements Playback {
                 pixels.set(JAVA_BYTE, offset, (byte) 0xFF);
             }
             stats.rendered(renderEnd - renderStart, System.nanoTime() - renderEnd, size);
-            synchronized (frameLock) {
-                Frame rendered = back;
-                back = front;
-                front = rendered;
-            }
+            // Publish the frame; if the previous one was never shown, reuse its buffer for the next frame.
+            back = ready.getAndSet(back);
             if (framePending.compareAndSet(false, true)) {
                 Platform.runLater(this::showFrame);
             }
@@ -351,21 +351,29 @@ public final class MpvPlayback implements Playback {
 
     private void showFrame() {
         framePending.set(false);
-        synchronized (frameLock) {
-            Frame frame = front;
-            if (frame == null || closed) {
-                return;
-            }
-            if (pixelBuffer == null || pixelBuffer.getWidth() != frame.width() || pixelBuffer.getHeight() != frame.height()) {
-                ByteBuffer buffer = ByteBuffer.allocateDirect((int) frame.pixels().byteSize());
-                pixelBuffer = new PixelBuffer<>(frame.width(), frame.height(), buffer, PixelFormat.getByteBgraPreInstance());
-                imageView.setImage(new WritableImage(pixelBuffer));
-            }
-            stats.shown();
-            pixelBuffer.updateBuffer(buffer -> {
-                MemorySegment.copy(frame.pixels(), 0, MemorySegment.ofBuffer(buffer.getBuffer()), 0, frame.pixels().byteSize());
-                return null;
-            });
+        if (closed) {
+            return;
+        }
+        Frame frame = ready.getAndSet(null);
+        if (frame == null) {
+            return;
+        }
+        if (pixelBuffer == null || pixelBuffer.getWidth() != frame.width() || pixelBuffer.getHeight() != frame.height()) {
+            ByteBuffer buffer = ByteBuffer.allocateDirect((int) frame.pixels().byteSize());
+            pixelBuffer = new PixelBuffer<>(frame.width(), frame.height(), buffer, PixelFormat.getByteBgraPreInstance());
+            imageView.setImage(new WritableImage(pixelBuffer));
+        }
+        stats.shown();
+        pixelBuffer.updateBuffer(buffer -> {
+            MemorySegment.copy(frame.pixels(), 0, MemorySegment.ofBuffer(buffer.getBuffer()), 0, frame.pixels().byteSize());
+            return null;
+        });
+        release(free.getAndSet(frame));
+    }
+
+    private static void release(Frame frame) {
+        if (frame != null) {
+            frame.arena().close();
         }
     }
 
@@ -529,15 +537,11 @@ public final class MpvPlayback implements Playback {
             mpv.freeRenderContext(renderContext);
         }
         mpv.terminateDestroy(handle);
-        synchronized (frameLock) {
-            for (Frame frame : new Frame[] {front, back}) {
-                if (frame != null) {
-                    frame.arena().close();
-                }
-            }
-            front = null;
-            back = null;
-        }
+        // Both threads have stopped or run here (dispose is on the JavaFX thread), so every buffer is idle.
+        release(back);
+        release(ready.getAndSet(null));
+        release(free.getAndSet(null));
+        back = null;
         arena.close();
     }
 
