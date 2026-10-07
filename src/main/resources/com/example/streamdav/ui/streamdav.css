@@ -1,0 +1,359 @@
+/*
+ * Dark theme layered on Modena. Modena derives text and control colours from -fx-base and
+ * -fx-background, so most controls only need the looked-up colours below.
+ */
+.root {
+    -fx-base: #25272e;
+    -fx-background: #16171b;
+    -fx-control-inner-background: #1b1c21;
+    -fx-control-inner-background-alt: #1e1f25;
+    -fx-accent: #4f8cff;
+    -fx-default-button: #3d74dc;
+    -fx-focus-color: #4f8cff;
+    -fx-faint-focus-color: #4f8cff22;
+    -fx-selection-bar: #33507f;
+    -fx-selection-bar-non-focused: #2b303b;
+    -fx-cell-focus-inner-border: #33507f;
+    -fx-font-size: 13px;
+
+    -sd-surface: #1d1f25;
+    -sd-border: #2b2e36;
+    -sd-muted: #8e95a3;
+    -sd-error: #ff7070;
+}
+
+.text-input {
+    -fx-prompt-text-fill: #6b7280;
+}
+
+.error-text {
+    -fx-text-fill: -sd-error;
+}
+
+.hint {
+    -fx-text-fill: -sd-muted;
+    -fx-font-size: 12px;
+}
+
+.actions {
+    -fx-spacing: 12;
+    -fx-alignment: center-left;
+}
+
+.small-progress {
+    -fx-pref-width: 22;
+    -fx-pref-height: 22;
+}
+
+/* Icons */
+
+.icon {
+    -fx-fill: #c9ced8;
+}
+
+.icon-folder {
+    -fx-fill: #f2b84b;
+}
+
+.icon-video {
+    -fx-fill: #6aa5ff;
+}
+
+.icon-audio {
+    -fx-fill: #c58cff;
+}
+
+.icon-file {
+    -fx-fill: #7d8491;
+}
+
+.icon-button {
+    -fx-background-color: transparent;
+    -fx-background-radius: 6;
+    -fx-padding: 6;
+    -fx-cursor: hand;
+}
+
+.icon-button:hover {
+    -fx-background-color: rgba(255, 255, 255, 0.08);
+}
+
+.icon-button:disabled {
+    -fx-opacity: 0.35;
+}
+
+.menu-button.icon-button > .arrow-button {
+    -fx-padding: 0;
+}
+
+.menu-button.icon-button > .arrow-button > .arrow {
+    -fx-padding: 0;
+    -fx-shape: null;
+}
+
+/* Connect screen */
+
+.connect-view .header {
+    -fx-padding: 36 40 8 40;
+    -fx-spacing: 4;
+}
+
+.app-title {
+    -fx-font-size: 30px;
+    -fx-font-weight: bold;
+    -fx-text-fill: white;
+}
+
+.subtitle {
+    -fx-font-size: 14px;
+    -fx-text-fill: -sd-muted;
+}
+
+.connect-view .content {
+    -fx-padding: 20 40 40 40;
+    -fx-spacing: 24;
+}
+
+.card {
+    -fx-background-color: -sd-surface;
+    -fx-background-radius: 12;
+    -fx-border-color: -sd-border;
+    -fx-border-radius: 12;
+    -fx-padding: 22;
+    -fx-spacing: 14;
+}
+
+.card-title {
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+    -fx-text-fill: white;
+}
+
+.form-label {
+    -fx-text-fill: -sd-muted;
+}
+
+.button.primary {
+    -fx-padding: 7 24;
+    -fx-font-weight: bold;
+}
+
+.server-list {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-padding: 0;
+}
+
+.server-list .list-cell {
+    -fx-background-color: transparent;
+    -fx-background-radius: 8;
+    -fx-padding: 10 12;
+}
+
+.server-list .list-cell:filled:hover {
+    -fx-background-color: #262a33;
+}
+
+.server-list .list-cell:filled:selected {
+    -fx-background-color: #2f3a52;
+}
+
+.server-name {
+    -fx-font-weight: bold;
+    -fx-text-fill: white;
+}
+
+.server-detail {
+    -fx-font-size: 12px;
+    -fx-text-fill: -sd-muted;
+}
+
+/* Browser */
+
+.toolbar {
+    -fx-padding: 8 12;
+    -fx-spacing: 6;
+    -fx-alignment: center-left;
+    -fx-background-color: #1b1c21;
+    -fx-border-color: transparent transparent -sd-border transparent;
+}
+
+.breadcrumbs {
+    -fx-padding: 0 8;
+    -fx-spacing: 2;
+    -fx-alignment: center-left;
+}
+
+.breadcrumbs .hyperlink {
+    -fx-font-size: 14px;
+    -fx-text-fill: -sd-muted;
+    -fx-border-color: transparent;
+    -fx-padding: 2 4;
+}
+
+.breadcrumbs .hyperlink:hover {
+    -fx-text-fill: white;
+    -fx-underline: false;
+}
+
+.crumb-separator {
+    -fx-text-fill: #555b66;
+}
+
+.crumb-current {
+    -fx-font-size: 14px;
+    -fx-font-weight: bold;
+    -fx-text-fill: white;
+    -fx-padding: 2 4;
+}
+
+.filter-field {
+    -fx-background-radius: 6;
+}
+
+.file-table {
+    -fx-background-color: transparent;
+    -fx-background-insets: 0;
+    -fx-padding: 0;
+    -fx-table-cell-border-color: transparent;
+}
+
+.file-table .column-header-background {
+    -fx-background-color: #1b1c21;
+}
+
+.file-table .column-header,
+.file-table .filler {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent transparent -sd-border transparent;
+    -fx-size: 30;
+}
+
+.file-table .column-header .label {
+    -fx-text-fill: -sd-muted;
+    -fx-font-weight: normal;
+}
+
+.file-table .table-row-cell,
+.file-table .table-cell {
+    -fx-cell-size: 34;
+}
+
+.file-table .table-cell {
+    -fx-padding: 0 10;
+    -fx-alignment: center-left;
+    -fx-graphic-text-gap: 10;
+}
+
+.file-table .size-cell {
+    -fx-alignment: center-right;
+}
+
+.file-table .size-cell,
+.file-table .date-cell {
+    -fx-text-fill: -sd-muted;
+}
+
+.file-table .table-row-cell:selected .size-cell,
+.file-table .table-row-cell:selected .date-cell {
+    -fx-text-fill: #d5dbe6;
+}
+
+.status-bar {
+    -fx-padding: 6 14;
+    -fx-background-color: #1b1c21;
+    -fx-border-color: -sd-border transparent transparent transparent;
+}
+
+.status-bar .label {
+    -fx-text-fill: -sd-muted;
+}
+
+/* Player */
+
+.player-view {
+    -fx-background-color: black;
+}
+
+.player-view .label {
+    -fx-text-fill: white;
+}
+
+.player-view .icon {
+    -fx-fill: white;
+}
+
+.player-top {
+    -fx-padding: 14 20 40 14;
+    -fx-spacing: 10;
+    -fx-alignment: center-left;
+    -fx-background-color: linear-gradient(to bottom, rgba(0, 0, 0, 0.75), transparent);
+}
+
+.player-title {
+    -fx-font-size: 16px;
+    -fx-font-weight: bold;
+}
+
+.player-controls {
+    -fx-padding: 40 20 14 20;
+    -fx-spacing: 4;
+    -fx-background-color: linear-gradient(to top, rgba(0, 0, 0, 0.85), transparent);
+}
+
+.player-buttons {
+    -fx-spacing: 8;
+    -fx-alignment: center-left;
+}
+
+.time-label {
+    -fx-font-size: 13px;
+}
+
+.player-view .slider .track {
+    -fx-background-color: rgba(255, 255, 255, 0.28);
+    -fx-background-insets: 0;
+    -fx-background-radius: 3;
+    -fx-padding: 2;
+}
+
+.player-view .slider .thumb {
+    -fx-background-color: white;
+    -fx-background-insets: 0;
+    -fx-background-radius: 8;
+    -fx-padding: 6;
+}
+
+.audio-pane {
+    -fx-alignment: center;
+    -fx-spacing: 16;
+    -fx-padding: 40;
+}
+
+.audio-title {
+    -fx-font-size: 20px;
+    -fx-font-weight: bold;
+    -fx-text-alignment: center;
+}
+
+.toast {
+    -fx-background-color: rgba(0, 0, 0, 0.7);
+    -fx-background-radius: 6;
+    -fx-padding: 6 12;
+}
+
+.player-error {
+    -fx-alignment: center;
+    -fx-spacing: 16;
+    -fx-padding: 24;
+    -fx-background-color: rgba(24, 25, 30, 0.95);
+    -fx-background-radius: 12;
+}
+
+.player-error .actions {
+    -fx-alignment: center;
+}
+
+.player-error .label {
+    -fx-text-alignment: center;
+}

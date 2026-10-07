@@ -23,17 +23,17 @@ tasks.withType(JavaCompile).configureEach {
     options.release = 25
 }
 
-def nativeAccessArgs = ['--enable-native-access=javafx.graphics']
+def nativeAccessArgs = ['--enable-native-access=javafx.graphics,javafx.media']
 
 application {
     mainModule = 'com.example.streamdav'
-    mainClass = 'com.example.streamdav.HelloApplication'
+    mainClass = 'com.example.streamdav.StreamDavApplication'
     applicationDefaultJvmArgs = nativeAccessArgs
 }
 
 javafx {
     version = '25.0.4'
-    modules = ['javafx.controls', 'javafx.fxml']
+    modules = ['javafx.controls', 'javafx.fxml', 'javafx.media']
 }
 
 dependencies {

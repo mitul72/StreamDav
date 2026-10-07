@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.CheckBox?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.MenuButton?>
+<?import javafx.scene.control.MenuItem?>
+<?import javafx.scene.control.ProgressIndicator?>
+<?import javafx.scene.control.SeparatorMenuItem?>
+<?import javafx.scene.control.TableColumn?>
+<?import javafx.scene.control.TableView?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.control.Tooltip?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.StackPane?>
+
+<BorderPane fx:id="root" styleClass="browser-view" xmlns="http://javafx.com/javafx" xmlns:fx="http://javafx.com/fxml"
+            fx:controller="com.example.streamdav.ui.BrowserController">
+    <top>
+        <HBox styleClass="toolbar">
+            <Button fx:id="backButton" styleClass="icon-button" onAction="#goBack">
+                <tooltip><Tooltip text="Back (Alt+Left)"/></tooltip>
+            </Button>
+            <Button fx:id="upButton" styleClass="icon-button" onAction="#goUp">
+                <tooltip><Tooltip text="Enclosing folder (Backspace)"/></tooltip>
+            </Button>
+            <HBox fx:id="breadcrumbs" styleClass="breadcrumbs" minWidth="0" HBox.hgrow="ALWAYS"/>
+            <TextField fx:id="filterField" styleClass="filter-field" promptText="Filter" prefColumnCount="14"/>
+            <CheckBox fx:id="showAllCheck" text="All files"/>
+            <Button fx:id="refreshButton" styleClass="icon-button" onAction="#refresh">
+                <tooltip><Tooltip text="Refresh (F5)"/></tooltip>
+            </Button>
+            <MenuButton fx:id="menuButton" styleClass="icon-button">
+                <items>
+                    <MenuItem text="External player…" onAction="#configureExternalPlayer"/>
+                    <SeparatorMenuItem/>
+                    <MenuItem text="Disconnect" onAction="#disconnect"/>
+                </items>
+            </MenuButton>
+        </HBox>
+    </top>
+    <center>
+        <StackPane>
+            <TableView fx:id="table" styleClass="file-table">
+                <columns>
+                    <TableColumn fx:id="nameColumn" text="Name" prefWidth="520"/>
+                    <TableColumn fx:id="sizeColumn" text="Size" prefWidth="100" maxWidth="140"/>
+                    <TableColumn fx:id="modifiedColumn" text="Modified" prefWidth="190" maxWidth="240"/>
+                </columns>
+            </TableView>
+            <ProgressIndicator fx:id="loading" maxWidth="48" maxHeight="48" visible="false" mouseTransparent="true"/>
+        </StackPane>
+    </center>
+    <bottom>
+        <HBox styleClass="status-bar">
+            <Label fx:id="statusLabel"/>
+        </HBox>
+    </bottom>
+</BorderPane>
