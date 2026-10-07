@@ -17,8 +17,7 @@ The executable file can be found in the [releases](https://github.com/mitul72/St
 
 ## Building the project
 ### Prerequisites
-- Java JDK 21 or later
-- Gradle 8.6 or later
+- Java JDK 25 or later (the Gradle wrapper downloads Gradle itself)
 ### Build instructions
 1. Clone the repository:
 ```
