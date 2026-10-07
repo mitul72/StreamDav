@@ -48,13 +48,20 @@ public final class Navigator {
         return Objects.requireNonNull(Navigator.class.getResource("streamdav.css")).toExternalForm();
     }
 
-    public void showConnect() {
+    /** Shows the first screen, connecting straight away if the user picked a server to autoconnect to. */
+    public void start() {
+        ConnectController connect = showConnect();
+        settings.autoConnectServer().ifPresent(connect::autoConnect);
+    }
+
+    ConnectController showConnect() {
         library = null;
         browser = null;
         browserView = null;
         Loaded<ConnectController> view = load("connect-view.fxml");
         view.controller().init(this);
         show(view.root(), APP_NAME);
+        return view.controller();
     }
 
     void showBrowser(MediaLibrary library, String serverName, List<RemoteFile> rootListing) {

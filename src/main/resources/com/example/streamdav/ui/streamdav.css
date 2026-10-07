@@ -163,6 +163,14 @@
     -fx-text-fill: white;
 }
 
+.badge {
+    -fx-background-color: #2f3a52;
+    -fx-background-radius: 4;
+    -fx-padding: 1 6;
+    -fx-font-size: 11px;
+    -fx-text-fill: #aecbff;
+}
+
 .server-detail {
     -fx-font-size: 12px;
     -fx-text-fill: -sd-muted;

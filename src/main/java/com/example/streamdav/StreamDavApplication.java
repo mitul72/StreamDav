@@ -32,8 +32,8 @@ public class StreamDavApplication extends Application {
         stage.setFullScreenExitKeyCombination(KeyCombination.NO_MATCH);
         stage.setFullScreenExitHint("Press Esc to exit full screen");
 
-        navigator.showConnect();
         stage.show();
+        navigator.start();
     }
 
     @Override

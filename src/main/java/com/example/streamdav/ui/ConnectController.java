@@ -3,9 +3,11 @@ package com.example.streamdav.ui;
 import com.example.streamdav.library.MediaLibrary;
 import com.example.streamdav.library.RemoteFile;
 import com.example.streamdav.settings.ServerProfile;
+import com.example.streamdav.settings.Settings;
 import javafx.application.Platform;
 import javafx.concurrent.Task;
 import javafx.fxml.FXML;
+import javafx.geometry.Pos;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.Label;
@@ -14,6 +16,7 @@ import javafx.scene.control.ListView;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.ProgressIndicator;
 import javafx.scene.control.TextField;
+import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 
 import java.net.URI;
@@ -30,6 +33,7 @@ public class ConnectController {
     @FXML private TextField nameField;
     @FXML private CheckBox saveServerCheck;
     @FXML private CheckBox rememberPasswordCheck;
+    @FXML private CheckBox autoConnectCheck;
     @FXML private Label passwordHint;
     @FXML private Button connectButton;
     @FXML private ProgressIndicator progress;
@@ -45,6 +49,18 @@ public class ConnectController {
         rememberPasswordCheck.disableProperty().bind(saveServerCheck.selectedProperty().not());
         passwordHint.visibleProperty().bind(rememberPasswordCheck.selectedProperty().and(saveServerCheck.selectedProperty()));
         passwordHint.managedProperty().bind(passwordHint.visibleProperty());
+        // Connecting unattended needs the password, so autoconnect implies remembering it.
+        autoConnectCheck.disableProperty().bind(saveServerCheck.selectedProperty().not());
+        autoConnectCheck.selectedProperty().addListener((observable, was, selected) -> {
+            if (selected && !usernameField.getText().isBlank()) {
+                rememberPasswordCheck.setSelected(true);
+            }
+        });
+        rememberPasswordCheck.selectedProperty().addListener((observable, was, selected) -> {
+            if (!selected && !usernameField.getText().isBlank()) {
+                autoConnectCheck.setSelected(false);
+            }
+        });
 
         savedServers.setCellFactory(list -> new ServerCell());
         savedServers.setPlaceholder(new Label("Servers you connect to will appear here."));
@@ -84,6 +100,7 @@ public class ConnectController {
         String name = nameField.getText().isBlank() ? root.getHost() : nameField.getText().strip();
         boolean save = saveServerCheck.isSelected();
         boolean rememberPassword = rememberPasswordCheck.isSelected();
+        boolean autoConnect = save && autoConnectCheck.isSelected();
 
         Task<Connection> task = new Task<>() {
             @Override
@@ -95,7 +112,13 @@ public class ConnectController {
         task.setOnSucceeded(event -> {
             setBusy(false, null);
             if (save) {
-                navigator.settings().saveServer(name, root.toString(), username, rememberPassword ? password : "");
+                Settings settings = navigator.settings();
+                String id = settings.saveServer(name, root.toString(), username, rememberPassword ? password : "");
+                if (autoConnect) {
+                    settings.setAutoConnect(id);
+                } else if (settings.autoConnectServer().filter(server -> server.id().equals(id)).isPresent()) {
+                    settings.setAutoConnect(null);
+                }
             }
             Connection connection = task.getValue();
             navigator.showBrowser(connection.library(), name, connection.rootListing());
@@ -108,6 +131,17 @@ public class ConnectController {
         pending = task;
         setBusy(true, "Connecting to " + name + "…");
         navigator.background().execute(task);
+    }
+
+    /** Connects to a saved server straight away, as if the user had double-clicked it. */
+    void autoConnect(ServerProfile server) {
+        savedServers.getItems().stream()
+                .filter(saved -> saved.id().equals(server.id()))
+                .findFirst()
+                .ifPresent(saved -> {
+                    savedServers.getSelectionModel().select(saved);
+                    connect();
+                });
     }
 
     @FXML
@@ -162,6 +196,7 @@ public class ConnectController {
         nameField.setText(server.name());
         saveServerCheck.setSelected(true);
         rememberPasswordCheck.setSelected(!server.password().isEmpty());
+        autoConnectCheck.setSelected(server.autoConnect());
         statusLabel.setText("");
     }
 
@@ -191,9 +226,16 @@ public class ConnectController {
             }
             Label name = new Label(server.name());
             name.getStyleClass().add("server-name");
+            HBox title = new HBox(8, name);
+            title.setAlignment(Pos.CENTER_LEFT);
+            if (server.autoConnect()) {
+                Label badge = new Label("Autoconnect");
+                badge.getStyleClass().add("badge");
+                title.getChildren().add(badge);
+            }
             Label detail = new Label(server.username().isEmpty() ? server.url() : server.username() + " · " + server.url());
             detail.getStyleClass().add("server-detail");
-            setGraphic(new VBox(2, name, detail));
+            setGraphic(new VBox(2, title, detail));
         }
     }
 }

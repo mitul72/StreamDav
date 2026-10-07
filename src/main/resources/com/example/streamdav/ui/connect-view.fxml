@@ -51,6 +51,7 @@
                 </GridPane>
                 <CheckBox fx:id="saveServerCheck" text="Save this server" selected="true"/>
                 <CheckBox fx:id="rememberPasswordCheck" text="Remember password"/>
+                <CheckBox fx:id="autoConnectCheck" text="Connect automatically at startup"/>
                 <Label fx:id="passwordHint" styleClass="hint" wrapText="true"
                        text="The password is stored unencrypted in your user preferences."/>
                 <HBox styleClass="actions">
