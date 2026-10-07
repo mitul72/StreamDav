@@ -24,5 +24,6 @@ class MediaKindTest {
         assertTrue(MediaKind.playsInBuiltInPlayer("song.mp3"));
         assertFalse(MediaKind.playsInBuiltInPlayer("movie.mkv"));
         assertFalse(MediaKind.playsInBuiltInPlayer("song.flac"));
+        assertFalse(MediaKind.playsInBuiltInPlayer("clip.flv"), "JavaFX dropped VP6, the codec FLV needs");
     }
 }

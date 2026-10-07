@@ -11,9 +11,12 @@ public enum MediaKind {
             "3gp", "avi", "flv", "m2ts", "m4v", "mkv", "mov", "mp4", "mpeg", "mpg", "mts", "ogv", "ts", "webm", "wmv");
     private static final Set<String> AUDIO_EXTENSIONS = Set.of(
             "aac", "aif", "aiff", "flac", "m4a", "mp3", "oga", "ogg", "opus", "wav", "wma");
-    /** Containers JavaFX Media can play. Everything else is handed to an external player. */
+    /**
+     * Containers JavaFX Media can play. Everything else is handed to an external player. FLV isn't here: JavaFX no
+     * longer decodes the VP6 video it carries.
+     */
     private static final Set<String> BUILT_IN_EXTENSIONS = Set.of(
-            "aif", "aiff", "flv", "m4a", "m4v", "mp3", "mp4", "wav");
+            "aif", "aiff", "m4a", "m4v", "mp3", "mp4", "wav");
 
     public static MediaKind of(String fileName) {
         String extension = extension(fileName);

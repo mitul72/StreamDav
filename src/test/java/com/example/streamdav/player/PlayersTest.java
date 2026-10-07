@@ -17,6 +17,7 @@ class PlayersTest {
         assertTrue(players.forFile("clip.mp4").isPresent());
         assertTrue(players.forFile("song.mp3").isPresent());
         assertTrue(players.forFile("movie.mkv").isEmpty(), "MKV needs an external player");
+        assertTrue(players.forFile("clip.flv").isEmpty(), "so does FLV");
         assertTrue(players.forFile("notes.txt").isEmpty());
     }
 
