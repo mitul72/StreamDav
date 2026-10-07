@@ -21,6 +21,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class WebDavLibraryTest {
     private static final byte[] CLIP = "pretend this is video".getBytes(StandardCharsets.UTF_8);
@@ -78,5 +79,18 @@ class WebDavLibraryTest {
                 .send(HttpRequest.newBuilder(streamUrl).build(), HttpResponse.BodyHandlers.ofByteArray());
         assertEquals(200, response.statusCode());
         assertArrayEquals(CLIP, response.body());
+    }
+
+    @Test
+    void closingReleasesTheStreamUrls() throws Exception {
+        WebDavLibrary library = new WebDavLibrary(new DavClient(root, "mitul", "secret"), proxy);
+        URI streamUrl = library.streamUrl(library.list(library.root()).getFirst());
+
+        library.close();
+
+        HttpResponse<byte[]> response = HttpClient.newHttpClient()
+                .send(HttpRequest.newBuilder(streamUrl).build(), HttpResponse.BodyHandlers.ofByteArray());
+        assertEquals(404, response.statusCode(), "the proxy no longer serves a closed library's files");
+        assertThrows(IOException.class, () -> library.list(library.root()), "and its connections are shut");
     }
 }

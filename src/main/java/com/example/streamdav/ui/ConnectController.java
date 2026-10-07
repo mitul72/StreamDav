@@ -110,11 +110,17 @@ public class ConnectController {
             @Override
             protected Connection call() throws Exception {
                 MediaLibrary library = navigator.connector().open(root, username, password);
-                return new Connection(library, library.list(library.root()));
+                try {
+                    return new Connection(library, library.list(library.root()));
+                } catch (Exception e) {
+                    library.close();
+                    throw e;
+                }
             }
         };
         task.setOnSucceeded(event -> {
             if (pending != task) {
+                task.getValue().library().close();
                 return;
             }
             setBusy(false, null);

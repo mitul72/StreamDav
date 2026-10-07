@@ -58,6 +58,9 @@ public final class Navigator {
     }
 
     ConnectController showConnect() {
+        if (library != null) {
+            library.close();
+        }
         library = null;
         browser = null;
         browserView = null;
@@ -161,6 +164,9 @@ public final class Navigator {
     public void shutdown() {
         if (player != null) {
             player.shutdown();
+        }
+        if (library != null) {
+            library.close();
         }
         background.shutdownNow();
     }

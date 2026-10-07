@@ -5,7 +5,7 @@ import java.net.URI;
 import java.util.List;
 
 /** A connected media server, as the UI sees it. */
-public interface MediaLibrary {
+public interface MediaLibrary extends AutoCloseable {
 
     /** The folder the user connected to; browsing never goes above it. */
     URI root();
@@ -15,6 +15,11 @@ public interface MediaLibrary {
 
     /** A URL that media players can open without needing the server's credentials. */
     URI streamUrl(RemoteFile file);
+
+    /** Releases connections and stream URLs once the user is done with this server. */
+    @Override
+    default void close() {
+    }
 
     @FunctionalInterface
     interface Connector {

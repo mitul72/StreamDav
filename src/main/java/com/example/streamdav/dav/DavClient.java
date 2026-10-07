@@ -57,6 +57,11 @@ public final class DavClient {
         return Optional.ofNullable(authorization);
     }
 
+    /** Closes the client's connections, aborting any request still running. */
+    public void close() {
+        http.shutdownNow();
+    }
+
     /** Lists the direct members of a folder, excluding the folder itself. */
     public List<RemoteFile> list(URI folder) throws IOException, InterruptedException {
         HttpRequest.Builder request = HttpRequest.newBuilder(folder)

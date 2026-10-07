@@ -32,4 +32,10 @@ public final class WebDavLibrary implements MediaLibrary {
     public URI streamUrl(RemoteFile file) {
         return proxy.publish(file.uri(), client.httpClient(), client.authorization());
     }
+
+    @Override
+    public void close() {
+        proxy.forget(client.httpClient());
+        client.close();
+    }
 }

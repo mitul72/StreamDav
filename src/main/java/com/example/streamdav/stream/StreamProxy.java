@@ -96,6 +96,22 @@ public final class StreamProxy implements AutoCloseable {
         return URI.create("http://" + host + ":" + address.getPort() + CONTEXT + token + "/" + (name.isEmpty() ? "media" : name));
     }
 
+    /**
+     * Withdraws every URL published with {@code client} (it's being closed), abandoning their requests still
+     * waiting on the server. Players get 404 for them afterwards.
+     */
+    public void forget(HttpClient client) {
+        targets.entrySet().removeIf(entry -> {
+            if (entry.getValue().client() != client) {
+                return false;
+            }
+            tokens.remove(entry.getValue().uri(), entry.getKey());
+            active.getOrDefault(entry.getKey(), Set.of())
+                    .forEach(relay -> relay.abandonIfWaiting(Duration.ZERO, "the server was disconnected"));
+            return true;
+        });
+    }
+
     @Override
     public void close() {
         server.stop(0);
