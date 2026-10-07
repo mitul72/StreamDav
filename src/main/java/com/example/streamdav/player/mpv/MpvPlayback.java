@@ -306,6 +306,16 @@ public final class MpvPlayback implements Playback {
     }
 
     private void renderLoop() {
+        try {
+            renderFrames();
+        } catch (RuntimeException | Error e) {
+            // Without this the thread would die silently: the picture freezes while the sound carries on.
+            log.error("Video rendering stopped", e);
+            Platform.runLater(() -> fail("The video couldn't be displayed."));
+        }
+    }
+
+    private void renderFrames() {
         while (!closed) {
             renderRequests.acquireUninterruptibly();
             renderRequests.drainPermits();
@@ -329,8 +339,12 @@ public final class MpvPlayback implements Playback {
                 back = Frame.allocate(size[0], size[1]);
             }
             long renderStart = System.nanoTime();
-            mpv.render(renderContext, back.target());
+            int error = mpv.render(renderContext, back.target());
             long renderEnd = System.nanoTime();
+            if (error < 0) {
+                log.warn("mpv couldn't render a {}x{} frame: {}", size[0], size[1], mpv.errorString(error));
+                continue;
+            }
             // mpv leaves the fourth byte of each "bgr0" pixel undefined; JavaFX reads it as alpha.
             MemorySegment pixels = back.pixels();
             for (long offset = 3; offset < pixels.byteSize(); offset += 4) {
