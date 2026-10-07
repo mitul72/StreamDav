@@ -38,7 +38,7 @@ class ReleaseParserTest {
     @Test
     void sceneEpisodes() {
         episode("Breaking.Bad.S01E01.Pilot.1080p.BluRay.x264-ROVERS.mkv", "Breaking Bad", 1, List.of(1), false);
-        episode("The.Office.US.S09E23.1080p.WEB-DL.DD5.1.H.264.mkv", "The Office US", 9, List.of(23), false);
+        episode("The.Office.US.S09E23.1080p.WEB-DL.DD5.1.H.264.mkv", "The Office", 9, List.of(23), false);
         episode("Mr.Robot.s02e05.720p.HDTV.x264.mkv", "Mr Robot", 2, List.of(5), false);
         episode("Severance S02 E10 2160p ATVP WEB-DL.mkv", "Severance", 2, List.of(10), false);
         episode("Friends 1x02 The One With the Sonogram.avi", "Friends", 1, List.of(2), false);
@@ -178,6 +178,54 @@ class ReleaseParserTest {
         // The accepted trade-off: inside a collection, a title that really starts with "N-" loses it. Metadata
         // matching by year still finds the right film.
         movie("Kim Ki-duk Collection/3-Iron (2004).mkv", "Iron", 2004);
+    }
+
+    @Test
+    void lessCommonEpisodeMarkers() {
+        episode("Lost.S02.E05.E06.720p.mkv", "Lost", 2, List.of(5, 6), false);
+        episode("Lost 2 x 05 HDTV.avi", "Lost", 2, List.of(5), false);
+        episode("Les Revenants Saison 1 Épisode 3 FRENCH 1080p.mkv", "Les Revenants", 1, List.of(3), false);
+        episode("Mushishi E04: The Pillow Pass.mkv", "Mushishi", null, List.of(4), false);
+        episode("barakamon-episode-07-1080p.mp4", "barakamon", null, List.of(7), false);
+        episode("Friends S05/Friends - 08 - The One with All the Thanksgivings.mkv", "Friends", 5, List.of(8), false);
+    }
+
+    @Test
+    void chineseAndJapaneseMarkers() {
+        episode("庆余年 第二季 第3集.mp4", "庆余年", 2, List.of(3), false);
+        episode("葬送のフリーレン 第2期 05話.mkv", "葬送のフリーレン", 2, List.of(5), false);
+        episode("长安十二时辰.The.Longest.Day.in.Chang'an.S01E04.1080p.WEB-DL.mkv", "The Longest Day in Chang'an", 1, List.of(4), false);
+    }
+
+    @Test
+    void fansubNamesWithNumbersInTheTitle() {
+        episode("[SubsPlease] Mob Psycho 100 - 100 Percent - 03 (1080p) [ABCD1234].mkv",
+                "Mob Psycho 100 - 100 Percent", null, List.of(3), true);
+        episode("[Figmentos] Mushishi 12 - The Sea of Writing [ABCD1234].mkv", "Mushishi", null, List.of(12), true);
+        episode("Kaiba 04 [ABCD1234].mkv", "Kaiba", null, List.of(4), true);
+        // A fansub pack named for its season still numbers its files absolutely.
+        episode("[Anime Time] Vinland Saga (Season 1) [1080p]/Vinland Saga - 01.mkv", "Vinland Saga", null, List.of(1), true);
+        movie("[Group] Gintama S01-S04 001-201 [1080p]", "Gintama", null);
+        movie("[Group] Gintama - S01-S04 v2 [1080p]", "Gintama", null);
+        movie("Gintama Complete S01-S04 [1080p]", "Gintama", null);
+    }
+
+    @Test
+    void movieTitlesThatLookLikeTags() {
+        movie("The.Collector.2009.1080p.BluRay.x264.mkv", "The Collector", 2009);
+        movie("A Very Murray 3D Christmas (2015).mkv", "A Very Murray 3D Christmas", 2015);
+        movie("One Piece Special - 3D2Y.mkv", "One Piece Special - 3D2Y", null);
+        movie("Dragon Ball Z - Battle of Gods (2013 BluRay - 1080p DUAL AUDIO).mkv", "Dragon Ball Z - Battle of Gods", 2013);
+        movie("h265 Nightcrawler 1080p.mkv", "Nightcrawler", null);
+        movie("(2)The Girl Who Played with Fire (2009) 720p.mkv", "The Girl Who Played with Fire", 2009);
+        movie("Das.Boot.German.DL.1080p.BluRay.x264.mkv", "Das Boot", null);
+        movie("劇場版 ペンギン・ハイウェイ Penguin Highway (BD 1280x720 AVC).mp4", "Penguin Highway", null);
+    }
+
+    @Test
+    void sceneFilesInReleaseFolders() {
+        movie("Arrival.2016.1080p.BluRay.x264-SPARKS/sparks-arrival.2016.1080p.bluray.x264.mkv", "Arrival", 2016);
+        movie("Heat.1995.DVDRip.XviD-GROUP/grp-heat.avi", "Heat", 1995);
     }
 
     @Test

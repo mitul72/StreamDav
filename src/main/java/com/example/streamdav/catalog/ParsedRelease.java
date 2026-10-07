@@ -27,6 +27,11 @@ public record ParsedRelease(Kind kind, String title, Integer year, Integer seaso
         return new ParsedRelease(Kind.EPISODE, title, year, season, episodes, anime);
     }
 
+    /** The same release, marked as looking like anime. */
+    ParsedRelease asAnime() {
+        return new ParsedRelease(kind, title, year, season, episodes, true);
+    }
+
     /** True for episodes numbered across the whole show rather than within a season. */
     public boolean absolute() {
         return kind == Kind.EPISODE && season == null;
