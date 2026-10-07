@@ -23,7 +23,7 @@ public class StreamDavApplication extends Application {
         proxy = new StreamProxy();
         navigator = new Navigator(stage, new Settings(),
                 (root, username, password) -> new WebDavLibrary(new DavClient(root, username, password), proxy),
-                new Players());
+                Players.detect());
 
         Scene scene = new Scene(new Region(), 1100, 720);
         scene.getStylesheets().add(Navigator.stylesheet());
