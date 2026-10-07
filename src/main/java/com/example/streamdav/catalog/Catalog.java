@@ -50,18 +50,23 @@ public record Catalog(List<Movie> movies, List<Show> shows, List<ScannedFile> un
 
         /** "S01E05", "S01E05–E06", "Special 2", or "Episode 1071" for absolutely numbered episodes. */
         public String label() {
-            String first = String.valueOf(numbers.getFirst());
-            String last = String.valueOf(numbers.getLast());
-            boolean range = numbers.size() > 1;
-            if (season == null) {
-                return range ? "Episodes " + first + "–" + last : "Episode " + first;
-            }
-            if (season == 0) {
-                return range ? "Specials " + first + "–" + last : "Special " + first;
-            }
-            String code = String.format(Locale.ROOT, "S%02dE%02d", season, numbers.getFirst());
-            return range ? code + String.format(Locale.ROOT, "–E%02d", numbers.getLast()) : code;
+            return episodeLabel(season, numbers);
         }
+    }
+
+    /** "S01E05", "S01E05–E06", "Special 2", or "Episode 1071" for absolutely numbered episodes. */
+    public static String episodeLabel(Integer season, List<Integer> numbers) {
+        String first = String.valueOf(numbers.getFirst());
+        String last = String.valueOf(numbers.getLast());
+        boolean range = numbers.size() > 1;
+        if (season == null) {
+            return range ? "Episodes " + first + "–" + last : "Episode " + first;
+        }
+        if (season == 0) {
+            return range ? "Specials " + first + "–" + last : "Special " + first;
+        }
+        String code = String.format(Locale.ROOT, "S%02dE%02d", season, numbers.getFirst());
+        return range ? code + String.format(Locale.ROOT, "–E%02d", numbers.getLast()) : code;
     }
 
     /** Absolute numbering first, then seasons in order, then specials. */
