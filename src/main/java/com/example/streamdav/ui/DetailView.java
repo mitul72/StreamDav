@@ -34,9 +34,11 @@ import javafx.scene.shape.Rectangle;
 import java.time.format.DateTimeFormatter;
 import java.time.format.FormatStyle;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.function.Function;
 
 /** A movie or show: its artwork and details, and its versions or episodes to play. */
 final class DetailView {
@@ -63,7 +65,14 @@ final class DetailView {
             page.getChildren().add(episodes());
         }
         if (!item.versions().isEmpty()) {
-            page.getChildren().add(files());
+            page.getChildren().add(fileList(item.versions().size() == 1 ? "File" : "Files", item.versions(),
+                    version -> version.file().name()));
+        }
+        if (!item.extras().isEmpty()) {
+            // Openings, endings and the like, packed with the show: by name, in the order they're numbered.
+            List<FileRef> extras = item.extras().stream()
+                    .sorted(Comparator.comparing(extra -> extra.file().name(), NaturalOrder.INSTANCE)).toList();
+            page.getChildren().add(fileList("Extras", extras, extra -> withoutExtension(extra.file().name())));
         }
         ScrollPane scroll = new ScrollPane(page);
         scroll.setFitToWidth(true);
@@ -287,12 +296,12 @@ final class DetailView {
         }
     }
 
-    private Node files() {
-        Label heading = new Label(item.versions().size() == 1 ? "File" : "Files");
+    private Node fileList(String title, List<FileRef> files, Function<FileRef, String> label) {
+        Label heading = new Label(title);
         heading.getStyleClass().add("shelf-title");
         VBox rows = new VBox(2);
-        for (FileRef version : item.versions()) {
-            Label name = new Label(version.file().name());
+        for (FileRef version : files) {
+            Label name = new Label(label.apply(version));
             name.getStyleClass().add("episode-title");
             Label meta = new Label(Format.size(version.file().size()));
             meta.getStyleClass().add("episode-meta");
@@ -314,6 +323,11 @@ final class DetailView {
         VBox section = new VBox(10, heading, rows);
         section.getStyleClass().add("episodes-section");
         return section;
+    }
+
+    private static String withoutExtension(String name) {
+        int dot = name.lastIndexOf('.');
+        return dot > 0 && name.length() - dot <= 5 ? name.substring(0, dot) : name;
     }
 
     private Node episodeRow(EpisodeEntry episode, boolean detailed) {
