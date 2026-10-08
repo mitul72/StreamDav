@@ -21,9 +21,21 @@ public interface Playback {
     interface Factory {
         /** Starts loading {@code url}; playback begins at {@code start} once the file is ready. */
         Playback open(URI url, Duration start);
+
+        /**
+         * True when the engine draws the picture straight into the native window, on the GPU, rather than into
+         * {@link #view()}. Nothing JavaFX draws in that window shows over the picture, so the player's controls go
+         * in a transparent window above it.
+         */
+        default boolean drawsOnWindow() {
+            return false;
+        }
     }
 
-    /** Shows the picture, scaled to fit whatever size the player lays it out at. */
+    /**
+     * Shows the picture, scaled to fit whatever size the player lays it out at. For engines that draw on the window
+     * it's an empty region the size of the picture, for clicks.
+     */
     Region view();
 
     ReadOnlyObjectProperty<Status> statusProperty();

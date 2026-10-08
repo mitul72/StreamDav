@@ -1,5 +1,6 @@
 package com.example.streamdav.player.mpv;
 
+import com.example.streamdav.player.NativeWindow;
 import com.example.streamdav.player.Playback;
 import com.example.streamdav.player.Track;
 import javafx.animation.AnimationTimer;
@@ -43,9 +44,16 @@ import static java.lang.foreign.ValueLayout.JAVA_BYTE;
 /**
  * Plays through an embedded libmpv, so anything mpv supports (MKV, HEVC, AV1, subtitles, ...) plays in the app.
  *
- * <p>mpv's software renderer draws each frame on a render thread, which hands it to the JavaFX thread through a
- * lock-free slot; the JavaFX thread copies it into the image on screen. Frames are rendered no larger than the video, the view or {@link #MAX_WIDTH} x
- * {@link #MAX_HEIGHT}, whichever is smallest, and the GPU scales them up from there.
+ * <p>The picture is drawn one of two ways:
+ * <ul>
+ *   <li>{@linkplain #onWindow On the window}: mpv's GPU renderer ({@code gpu-next}, with hardware decoding) draws
+ *       straight into the app's native window, at full resolution and without copying frames. {@link #view()} is
+ *       an empty region, and the player's controls sit in a window above the picture.</li>
+ *   <li>In software, the fallback: mpv's software renderer draws each frame on a render thread, which hands it to
+ *       the JavaFX thread through a lock-free slot; the JavaFX thread copies it into the image on screen. Frames are
+ *       rendered no larger than the video, the view or {@link #MAX_WIDTH} x {@link #MAX_HEIGHT}, whichever is
+ *       smallest, since every pixel is copied on the CPU; the GPU scales them up from there.</li>
+ * </ul>
  */
 public final class MpvPlayback implements Playback {
     private static final Logger log = LogManager.getLogger(MpvPlayback.class);
@@ -58,6 +66,10 @@ public final class MpvPlayback implements Playback {
 
     private final LibMpv mpv;
     private final MemorySegment handle;
+    /** Drawing on the native window rather than in software. */
+    private final boolean onWindow;
+    private final Runnable onWindowFailure;
+    private volatile boolean hasVideo;
     private final Arena arena = Arena.ofShared();
     private final Semaphore renderRequests = new Semaphore(0);
     private MemorySegment renderContext;
@@ -162,28 +174,64 @@ public final class MpvPlayback implements Playback {
         }
     }
 
+    /** Plays with mpv's software renderer, drawn by JavaFX. */
     public MpvPlayback(LibMpv mpv, URI url, Duration start) {
+        this(mpv, url, start, null, NativeWindow.Platform.UNSUPPORTED, () -> { });
+    }
+
+    /**
+     * Plays with mpv's GPU renderer drawing into the native window {@code windowHandle}, covering it.
+     *
+     * @param onFailure called on the JavaFX thread if the GPU output can't start, so later files can use software
+     */
+    public static MpvPlayback onWindow(LibMpv mpv, URI url, Duration start, long windowHandle,
+                                       NativeWindow.Platform platform, Runnable onFailure) {
+        return new MpvPlayback(mpv, url, start, windowHandle, platform, onFailure);
+    }
+
+    private MpvPlayback(LibMpv mpv, URI url, Duration start, Long windowHandle, NativeWindow.Platform platform,
+                        Runnable onWindowFailure) {
         this.mpv = mpv;
-        imageView.setPreserveRatio(true);
-        imageView.setSmooth(true);
-        imageView.fitWidthProperty().bind(view.widthProperty());
-        imageView.fitHeightProperty().bind(view.heightProperty());
-        view.getChildren().add(imageView);
+        this.onWindow = windowHandle != null;
+        this.onWindowFailure = onWindowFailure;
         view.setMinSize(0, 0);
-        // A new size needs a new frame, even while paused, or the old one is stretched until playback moves on.
-        // While a window is being dragged to a new size, keep rendering at the old size (the GPU scales it) and
-        // switch once the size settles, rather than allocating new buffers for every intermediate size.
-        resizeSettle.setOnFinished(event -> applyViewSize());
-        view.widthProperty().addListener(observable -> onViewResized());
-        view.heightProperty().addListener(observable -> onViewResized());
+        if (!onWindow) {
+            imageView.setPreserveRatio(true);
+            imageView.setSmooth(true);
+            imageView.fitWidthProperty().bind(view.widthProperty());
+            imageView.fitHeightProperty().bind(view.heightProperty());
+            view.getChildren().add(imageView);
+            // A new size needs a new frame, even while paused, or the old one is stretched until playback moves on.
+            // While a window is being dragged to a new size, keep rendering at the old size (the GPU scales it) and
+            // switch once the size settles, rather than allocating new buffers for every intermediate size.
+            resizeSettle.setOnFinished(event -> applyViewSize());
+            view.widthProperty().addListener(observable -> onViewResized());
+            view.heightProperty().addListener(observable -> onViewResized());
+        }
 
         handle = mpv.create();
         if (handle.equals(MemorySegment.NULL)) {
             fail("The built-in player couldn't start.");
             return;
         }
-        option("vo", "libmpv");
-        option("hwdec", "auto-copy-safe");
+        if (onWindow) {
+            option("vo", "gpu-next");
+            option("wid", Long.toString(windowHandle));
+            if (platform == NativeWindow.Platform.X11) {
+                // JavaFX's windows are X11 ones, even under Wayland; mpv's Wayland output couldn't embed in them.
+                option("gpu-context", "x11vk,x11egl");
+            }
+            // Without it, mpv's embedded X11 window is created but never shown.
+            option("force-window", "yes");
+            option("hwdec", "auto-safe");
+            // The controls window above handles input and the pointer.
+            option("input-vo-keyboard", "no");
+            option("input-cursor", "no");
+            option("cursor-autohide", "no");
+        } else {
+            option("vo", "libmpv");
+            option("hwdec", "auto-copy-safe");
+        }
         option("keep-open", "yes");
         option("load-scripts", "no");
         option("ytdl", "no");
@@ -200,14 +248,16 @@ public final class MpvPlayback implements Playback {
         }
         initialized = true;
         mpv.requestLogMessages(handle, "warn");
-        try {
-            renderContext = mpv.createSoftwareRenderContext(handle);
-            mpv.setUpdateCallback(renderContext, renderRequests::release, arena);
-        } catch (RuntimeException e) {
-            // dispose() still tears down whatever was created.
-            log.warn("Could not set up mpv's software renderer", e);
-            fail("The built-in player couldn't display video.");
-            return;
+        if (!onWindow) {
+            try {
+                renderContext = mpv.createSoftwareRenderContext(handle);
+                mpv.setUpdateCallback(renderContext, renderRequests::release, arena);
+            } catch (RuntimeException e) {
+                // dispose() still tears down whatever was created.
+                log.warn("Could not set up mpv's software renderer", e);
+                fail("The built-in player couldn't display video.");
+                return;
+            }
         }
         observe("time-pos", LibMpv.FORMAT_DOUBLE);
         observe("duration", LibMpv.FORMAT_DOUBLE);
@@ -233,9 +283,11 @@ public final class MpvPlayback implements Playback {
             }
         });
 
-        frameTimer.start();
         eventThread = Thread.ofPlatform().daemon().name("mpv-events").start(this::eventLoop);
-        renderThread = Thread.ofPlatform().daemon().name("mpv-render").start(this::renderLoop);
+        if (!onWindow) {
+            frameTimer.start();
+            renderThread = Thread.ofPlatform().daemon().name("mpv-render").start(this::renderLoop);
+        }
         mpv.command(handle, "loadfile", url.toString());
     }
 
@@ -252,12 +304,22 @@ public final class MpvPlayback implements Playback {
                 case LibMpv.EVENT_FILE_LOADED -> {
                     String videoTrack = mpv.getProperty(handle, "vid");
                     boolean noVideo = videoTrack == null || videoTrack.equals("no");
+                    hasVideo = !noVideo;
                     onFx(() -> audioOnly.set(noVideo));
                 }
-                case LibMpv.EVENT_PLAYBACK_RESTART -> onFx(() -> {
-                    started = true;
-                    updateStatus();
-                });
+                case LibMpv.EVENT_PLAYBACK_RESTART -> {
+                    // A GPU output that couldn't start leaves mpv playing the sound alone.
+                    boolean noOutput = onWindow && hasVideo && mpv.getProperty(handle, "current-vo") == null;
+                    onFx(() -> {
+                        if (noOutput) {
+                            onWindowFailure.run();
+                            fail("The video couldn't be shown with the GPU. Play it again to use the software renderer.");
+                            return;
+                        }
+                        started = true;
+                        updateStatus();
+                    });
+                }
                 case LibMpv.EVENT_END_FILE -> {
                     if (LibMpv.endFileReason(event) == LibMpv.END_FILE_REASON_ERROR) {
                         String message = describe(LibMpv.endFileError(event));

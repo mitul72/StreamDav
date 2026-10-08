@@ -2,6 +2,7 @@ package com.example.streamdav;
 
 import com.example.streamdav.dav.DavClient;
 import com.example.streamdav.dav.WebDavLibrary;
+import com.example.streamdav.player.NativeWindow;
 import com.example.streamdav.player.Players;
 import com.example.streamdav.settings.Settings;
 import com.example.streamdav.stream.StreamProxy;
@@ -23,7 +24,7 @@ public class StreamDavApplication extends Application {
         proxy = new StreamProxy();
         navigator = new Navigator(stage, new Settings(),
                 (root, username, password) -> new WebDavLibrary(new DavClient(root, username, password), proxy),
-                Players.detect());
+                Players.detect(() -> NativeWindow.handle(stage)));
 
         Scene scene = new Scene(new Region(), 1100, 720);
         scene.getStylesheets().add(Navigator.stylesheet());
