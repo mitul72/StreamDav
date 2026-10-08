@@ -61,8 +61,11 @@ public final class MpvPlayback implements Playback {
     private static final int MAX_HEIGHT = 1080;
     // mpv/client.h error codes
     private static final int ERROR_LOADING_FAILED = -13;
+    private static final int ERROR_VO_INIT_FAILED = -15;
     private static final int ERROR_NOTHING_TO_PLAY = -16;
     private static final int ERROR_UNKNOWN_FORMAT = -17;
+    private static final String GPU_FAILED =
+            "The video couldn't be shown with the GPU. Play it again to use the software renderer.";
 
     private final LibMpv mpv;
     private final MemorySegment handle;
@@ -98,6 +101,8 @@ public final class MpvPlayback implements Playback {
     private boolean failed;
     private boolean initialized;
     private boolean updatingFromMpv;
+    /** A pause state asked for and not yet reported back by mpv, or null. */
+    private Boolean requestedPause;
 
     // Frame hand-off between the render thread and the JavaFX thread, without locks. Buffers circulate: the render
     // thread draws into its own buffer and swaps it into `ready`; the JavaFX thread takes the ready frame, copies it
@@ -228,6 +233,7 @@ public final class MpvPlayback implements Playback {
             option("input-vo-keyboard", "no");
             option("input-cursor", "no");
             option("cursor-autohide", "no");
+            option("focus-on", "never");
         } else {
             option("vo", "libmpv");
             option("hwdec", "auto-copy-safe");
@@ -288,12 +294,24 @@ public final class MpvPlayback implements Playback {
             frameTimer.start();
             renderThread = Thread.ofPlatform().daemon().name("mpv-render").start(this::renderLoop);
         }
-        mpv.command(handle, "loadfile", url.toString());
+        int loadError = mpv.command(handle, "loadfile", url.toString());
+        if (loadError < 0) {
+            fail(describe(loadError));
+        }
     }
 
     // mpv threads
 
     private void eventLoop() {
+        try {
+            readEvents();
+        } catch (RuntimeException | Error e) {
+            log.error("mpv event processing stopped", e);
+            onFx(() -> fail("The player stopped responding."));
+        }
+    }
+
+    private void readEvents() {
         while (!closed) {
             LibMpv.Event event = mpv.waitEvent(handle, -1);
             switch (event.id()) {
@@ -313,7 +331,7 @@ public final class MpvPlayback implements Playback {
                     onFx(() -> {
                         if (noOutput) {
                             onWindowFailure.run();
-                            fail("The video couldn't be shown with the GPU. Play it again to use the software renderer.");
+                            fail(GPU_FAILED);
                             return;
                         }
                         started = true;
@@ -322,8 +340,16 @@ public final class MpvPlayback implements Playback {
                 }
                 case LibMpv.EVENT_END_FILE -> {
                     if (LibMpv.endFileReason(event) == LibMpv.END_FILE_REASON_ERROR) {
-                        String message = describe(LibMpv.endFileError(event));
-                        onFx(() -> fail(message));
+                        int error = LibMpv.endFileError(event);
+                        String message = describe(error);
+                        onFx(() -> {
+                            if (onWindow && error == ERROR_VO_INIT_FAILED) {
+                                onWindowFailure.run();
+                                fail(GPU_FAILED);
+                            } else {
+                                fail(message);
+                            }
+                        });
                     }
                 }
                 case LibMpv.EVENT_LOG_MESSAGE -> log.warn("mpv {}", LibMpv.logMessage(event));
@@ -349,7 +375,15 @@ public final class MpvPlayback implements Playback {
             case "duration" -> onFx(() ->
                     duration.set(value instanceof Double seconds ? Duration.seconds(seconds) : Duration.UNKNOWN));
             case "pause" -> onFx(() -> {
-                paused = Boolean.TRUE.equals(value);
+                boolean nowPaused = Boolean.TRUE.equals(value);
+                if (requestedPause != null) {
+                    if (requestedPause != nowPaused) {
+                        // From before the last play() or pause(); mpv will report the requested state next.
+                        return;
+                    }
+                    requestedPause = null;
+                }
+                paused = nowPaused;
                 updateStatus();
             });
             case "paused-for-cache" -> onFx(() -> {
@@ -485,13 +519,13 @@ public final class MpvPlayback implements Playback {
     private void updateStatus() {
         if (failed) {
             status.set(Status.FAILED);
-        } else if (!started) {
-            status.set(Status.LOADING);
         } else if (ended) {
             status.set(Status.ENDED);
         } else if (paused) {
             // Paused by the user, even if a seek is still loading: the play button must offer to resume.
             status.set(Status.PAUSED);
+        } else if (!started) {
+            status.set(Status.LOADING);
         } else {
             status.set(waiting || seeking ? Status.BUFFERING : Status.PLAYING);
         }
@@ -628,15 +662,35 @@ public final class MpvPlayback implements Playback {
 
     @Override
     public void play() {
+        if (failed || closed) {
+            return;
+        }
         if (ended) {
             command("seek", "0", "absolute");
         }
-        property("pause", "no");
+        requestPause(false);
+        ended = false;
+        updateStatus();
     }
 
     @Override
     public void pause() {
-        property("pause", "yes");
+        if (failed || closed) {
+            return;
+        }
+        requestPause(true);
+        updateStatus();
+    }
+
+    /**
+     * Pauses or resumes, showing the new state straight away. Until mpv reports that state, older reports are
+     * ignored, so a quick pause-then-play doesn't flash the paused state.
+     */
+    private void requestPause(boolean pause) {
+        // mpv reports only changes: asking for the current state would leave the request unconfirmed for good.
+        requestedPause = pause == paused ? null : pause;
+        paused = pause;
+        property("pause", pause ? "yes" : "no");
     }
 
     @Override
