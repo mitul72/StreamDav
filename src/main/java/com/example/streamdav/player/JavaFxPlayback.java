@@ -36,6 +36,7 @@ public final class JavaFxPlayback implements Playback {
     private String errorMessage;
     /** Whether to start once the file is ready; pausing while it loads clears it. */
     private boolean playWhenReady = true;
+    private boolean closed;
 
     public JavaFxPlayback(URI url, Duration start) {
         this.start = start;
@@ -55,15 +56,26 @@ public final class JavaFxPlayback implements Playback {
         }
         player.setOnReady(this::onReady);
         player.setOnError(() -> fail(player.getError()));
-        player.setOnEndOfMedia(() -> status.set(Status.ENDED));
+        player.setOnEndOfMedia(() -> {
+            if (!closed && status.get() != Status.FAILED) {
+                status.set(Status.ENDED);
+            }
+        });
         player.statusProperty().addListener((observable, old, playerStatus) -> onStatusChanged(playerStatus));
-        player.currentTimeProperty().addListener((observable, old, time) -> position.set(time));
+        player.currentTimeProperty().addListener((observable, old, time) -> {
+            if (!closed) {
+                position.set(time);
+            }
+        });
         player.volumeProperty().bindBidirectional(volume);
         player.muteProperty().bindBidirectional(mute);
         mediaView.setMediaPlayer(player);
     }
 
     private void onReady() {
+        if (closed || status.get() == Status.FAILED) {
+            return;
+        }
         Media media = player.getMedia();
         audioOnly.set(media.getWidth() == 0 && media.getHeight() == 0);
         duration.set(media.getDuration());
@@ -78,7 +90,7 @@ public final class JavaFxPlayback implements Playback {
     }
 
     private void onStatusChanged(MediaPlayer.Status playerStatus) {
-        if (status.get() == Status.FAILED) {
+        if (closed || status.get() == Status.FAILED) {
             return;
         }
         switch (playerStatus) {
@@ -95,7 +107,7 @@ public final class JavaFxPlayback implements Playback {
     }
 
     private void fail(MediaException error) {
-        if (status.get() == Status.FAILED) {
+        if (closed || status.get() == Status.FAILED) {
             return;
         }
         log.warn("JavaFX playback failed", error);
@@ -157,6 +169,9 @@ public final class JavaFxPlayback implements Playback {
 
     @Override
     public void play() {
+        if (closed || status.get() == Status.FAILED) {
+            return;
+        }
         playWhenReady = true;
         if (player == null) {
             return;
@@ -165,6 +180,9 @@ public final class JavaFxPlayback implements Playback {
             player.seek(Duration.ZERO);
         }
         player.play();
+        if (player.getStatus() == MediaPlayer.Status.UNKNOWN) {
+            status.set(Status.LOADING);
+        }
         // MediaPlayer stays PLAYING at the end of the media (and ignores pause there), so replaying fires no
         // status change; report it ourselves.
         if (player.getStatus() == MediaPlayer.Status.PLAYING) {
@@ -174,15 +192,21 @@ public final class JavaFxPlayback implements Playback {
 
     @Override
     public void pause() {
+        if (closed || status.get() == Status.FAILED) {
+            return;
+        }
         playWhenReady = false;
         if (player != null) {
             player.pause();
+        }
+        if (status.get() == Status.LOADING || status.get() == Status.BUFFERING) {
+            status.set(Status.PAUSED);
         }
     }
 
     @Override
     public void seek(Duration target) {
-        if (player != null) {
+        if (!closed && status.get() != Status.FAILED && player != null) {
             if (status.get() == Status.ENDED) {
                 status.set(Status.PAUSED);
             }
@@ -192,7 +216,13 @@ public final class JavaFxPlayback implements Playback {
 
     @Override
     public void dispose() {
+        if (closed) {
+            return;
+        }
+        closed = true;
         if (player != null) {
+            player.volumeProperty().unbindBidirectional(volume);
+            player.muteProperty().unbindBidirectional(mute);
             player.dispose();
         }
     }
