@@ -23,8 +23,10 @@ tasks.withType(JavaCompile).configureEach {
     options.release = 25
 }
 
-// JavaFX and SQLite load native libraries, and the app calls libmpv through the FFM API.
-def nativeAccessArgs = ['--enable-native-access=javafx.graphics,javafx.media,org.xerial.sqlitejdbc,com.example.streamdav']
+// JavaFX and SQLite load native libraries, and the app calls libmpv through the FFM API. mpv draws video straight
+// into the window, whose native handle only JavaFX's internal glass toolkit knows.
+def nativeAccessArgs = ['--enable-native-access=javafx.graphics,javafx.media,org.xerial.sqlitejdbc,com.example.streamdav',
+                        '--add-exports=javafx.graphics/com.sun.glass.ui=com.example.streamdav']
 
 application {
     mainModule = 'com.example.streamdav'
