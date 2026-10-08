@@ -15,6 +15,8 @@ import javafx.scene.control.Alert;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.TextInputDialog;
+import javafx.scene.input.KeyEvent;
+import javafx.scene.layout.StackPane;
 import javafx.stage.Stage;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -61,6 +63,8 @@ public final class Navigator {
     private Parent libraryView;
     private LibraryController libraryController;
     private PlayerController player;
+    /** The player's controls, when the video is drawn straight into the window below them. */
+    private VideoOverlay videoOverlay;
     /** The screen the player goes back to. */
     private Parent beforePlayer;
     private String titleBeforePlayer;
@@ -180,20 +184,40 @@ public final class Navigator {
         titleBeforePlayer = stage.getTitle();
         Loaded<PlayerController> view = load("player-view.fxml");
         player = view.controller();
-        player.init(this, file, engine.get(), from.streamUrl(file));
-        show(view.root(), file.name() + " — " + APP_NAME);
+        if (engine.get().drawsOnWindow()) {
+            // mpv covers the window's content with the picture; the controls go in a window above it.
+            StackPane backdrop = new StackPane();
+            backdrop.getStyleClass().add("player-backdrop");
+            PlayerController current = player;
+            backdrop.addEventHandler(KeyEvent.KEY_PRESSED, current::handleKey);
+            show(backdrop, file.name() + " — " + APP_NAME);
+            videoOverlay = new VideoOverlay(stage, view.root());
+            player.init(this, file, engine.get(), from.streamUrl(file));
+            videoOverlay.show();
+        } else {
+            player.init(this, file, engine.get(), from.streamUrl(file));
+            show(view.root(), file.name() + " — " + APP_NAME);
+        }
         player.focus();
     }
 
     /** Goes back to the screen the player was opened from. */
     void closePlayer() {
         player = null;
+        closeVideoOverlay();
         if (beforePlayer == browserView && browser != null) {
             returnToBrowser();
             return;
         }
         show(beforePlayer, titleBeforePlayer);
         beforePlayer.requestFocus();
+    }
+
+    private void closeVideoOverlay() {
+        if (videoOverlay != null) {
+            videoOverlay.close();
+            videoOverlay = null;
+        }
     }
 
     void openExternally(RemoteFile file) {
@@ -331,6 +355,7 @@ public final class Navigator {
         if (player != null) {
             player.shutdown();
         }
+        closeVideoOverlay();
         if (library != null) {
             library.close();
         }

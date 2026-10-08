@@ -284,6 +284,16 @@
     -fx-background-color: black;
 }
 
+/* With mpv drawing on the window, the controls sit in a transparent window above it. A barely-there background
+   keeps the mouse events coming everywhere, so moving the pointer brings the controls back. */
+.player-view.over-video {
+    -fx-background-color: rgba(0, 0, 0, 0.004);
+}
+
+.player-backdrop {
+    -fx-background-color: black;
+}
+
 .player-view .label {
     -fx-text-fill: white;
 }

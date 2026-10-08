@@ -71,6 +71,10 @@ public class PlayerController {
     void init(Navigator navigator, RemoteFile file, Playback.Factory engine, URI streamUrl) {
         this.navigator = navigator;
         this.file = file;
+        if (engine.drawsOnWindow()) {
+            // In a transparent window over the picture: see-through, but still catching the mouse everywhere.
+            root.getStyleClass().add("over-video");
+        }
         titleLabel.setText(file.name());
         audioTitle.setText(file.name());
         audioPane.getChildren().addFirst(Icon.AUDIO.create(96));
@@ -92,7 +96,7 @@ public class PlayerController {
         fadeOut.setToValue(0);
         hideTimer.setOnFinished(event -> hideControls());
         toastTimer.setOnFinished(event -> toastLabel.setVisible(false));
-        root.addEventFilter(KeyEvent.KEY_PRESSED, this::onKeyPressed);
+        root.addEventFilter(KeyEvent.KEY_PRESSED, this::handleKey);
         root.addEventFilter(MouseEvent.MOUSE_MOVED, event -> showControls());
         root.setOnMouseClicked(this::onMouseClicked);
         configureSeekSlider();
@@ -248,7 +252,11 @@ public class PlayerController {
         }
     }
 
-    private void onKeyPressed(KeyEvent event) {
+    /** Player shortcuts; also given keys pressed while the window under the controls has focus. */
+    void handleKey(KeyEvent event) {
+        if (event.isConsumed() || closed) {
+            return;
+        }
         switch (event.getCode()) {
             case SPACE, K -> togglePlay();
             case LEFT, J -> skip(-SKIP_SECONDS);
