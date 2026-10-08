@@ -63,14 +63,17 @@ public class PlayerController {
             fullScreenButton.setGraphic((fullScreen ? Icon.EXIT_FULLSCREEN : Icon.FULLSCREEN).create(24));
     private Navigator navigator;
     private RemoteFile file;
+    private URI streamUrl;
     private Playback playback;
     private Duration resumeFrom = Duration.ZERO;
     private boolean updatingSeekSlider;
     private boolean closed;
+    private boolean playingBeforeClick;
 
     void init(Navigator navigator, RemoteFile file, Playback.Factory engine, URI streamUrl) {
         this.navigator = navigator;
         this.file = file;
+        this.streamUrl = streamUrl;
         if (engine.drawsOnWindow()) {
             // In a transparent window over the picture: see-through, but still catching the mouse everywhere.
             root.getStyleClass().add("over-video");
@@ -94,6 +97,7 @@ public class PlayerController {
 
         fadeOut.setNode(overlay);
         fadeOut.setToValue(0);
+        fadeOut.setOnFinished(event -> overlay.setMouseTransparent(true));
         hideTimer.setOnFinished(event -> hideControls());
         toastTimer.setOnFinished(event -> toastLabel.setVisible(false));
         root.addEventFilter(KeyEvent.KEY_PRESSED, this::handleKey);
@@ -115,6 +119,8 @@ public class PlayerController {
         volumeSlider.valueProperty().bindBidirectional(playback.volumeProperty());
         playback.tracks().addListener((ListChangeListener<Track>) change -> ifOpen(this::updateTrackMenus));
         updateTrackMenus();
+        onDurationChanged(playback.durationProperty().get());
+        audioPane.setVisible(playback.audioOnlyProperty().get());
         onStatusChanged(playback.status());
     }
 
@@ -136,10 +142,12 @@ public class PlayerController {
         closed = true;
         hideTimer.stop();
         toastTimer.stop();
+        fadeOut.stop();
         navigator.stage().fullScreenProperty().removeListener(fullScreenListener);
         navigator.stage().setFullScreen(false);
         if (playback != null) {
             saveProgress();
+            volumeSlider.valueProperty().unbindBidirectional(playback.volumeProperty());
             playback.dispose();
         }
     }
@@ -257,6 +265,10 @@ public class PlayerController {
         if (event.isConsumed() || closed) {
             return;
         }
+        // Let an open track menu handle navigation and Escape without seeking or closing the player.
+        if (audioMenu.isShowing() || subtitleMenu.isShowing()) {
+            return;
+        }
         switch (event.getCode()) {
             case SPACE, K -> togglePlay();
             case LEFT, J -> skip(-SKIP_SECONDS);
@@ -282,13 +294,20 @@ public class PlayerController {
 
     private void onMouseClicked(MouseEvent event) {
         // Only clicks on the picture itself; buttons and sliders handle their own.
-        if (event.getButton() != MouseButton.PRIMARY || !isOnPicture(event.getTarget())) {
+        if (closed || playback == null || playback.status() == Status.FAILED
+                || event.getButton() != MouseButton.PRIMARY || !isOnPicture(event.getTarget())) {
             return;
         }
         if (event.getClickCount() == 2) {
             toggleFullScreen();
-            togglePlay(); // undo the pause from the first click of the double-click
+            // Restore the intent from before the first click; engine notifications may still be queued.
+            if (playingBeforeClick) {
+                playback.play();
+            } else {
+                playback.pause();
+            }
         } else {
+            playingBeforeClick = isPlayingOrTrying(playback.status());
             togglePlay();
         }
     }
@@ -333,10 +352,10 @@ public class PlayerController {
 
     @FXML
     private void openExternally() {
-        if (playback != null && playback.status() == Status.PLAYING) {
+        if (playback != null && isPlayingOrTrying(playback.status())) {
             playback.pause();
         }
-        navigator.openExternally(file);
+        navigator.openExternally(file, streamUrl);
     }
 
     @FXML
@@ -371,6 +390,7 @@ public class PlayerController {
 
     private void showControls() {
         fadeOut.stop();
+        overlay.setMouseTransparent(false);
         overlay.setOpacity(1);
         root.setCursor(Cursor.DEFAULT);
         scheduleHide();
