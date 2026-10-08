@@ -132,4 +132,45 @@ class CatalogTest {
         assertEquals(Catalog.key("Mr. Robot"), Catalog.key("mr robot"));
         assertEquals(Catalog.key("Spider-Man"), Catalog.key("Spider Man"));
     }
+
+    @Test
+    void numberedSongsInAShowsPackAreItsExtras() {
+        String pack = "[Group] Naruto Complete (001-220 + Movies) [BD] [1080p]/";
+        List<String> paths = new java.util.ArrayList<>();
+        for (int episode = 1; episode <= 6; episode++) {
+            paths.add(pack + String.format("[Group] Naruto - %03d - Title.mkv", episode));
+        }
+        paths.add(pack + "01 - R★O★C★K★S.mkv");
+        paths.add(pack + "02 - Haruka Kanata (Far Away).mkv");
+        paths.add(pack + "12 [A] - Parade.mkv");
+        paths.add(pack + "12 [B] - Parade.mkv");
+        paths.add(pack + "[Group] Naruto The Movie - Ninja Clash In The Land Of Snow (2004).mkv");
+
+        Catalog catalog = catalog(paths.toArray(String[]::new));
+
+        assertEquals(List.of("Naruto"), catalog.shows().stream().map(Show::title).toList());
+        Show naruto = catalog.shows().getFirst();
+        assertEquals(6, naruto.episodes().size());
+        assertEquals(List.of("01 - R★O★C★K★S.mkv", "02 - Haruka Kanata (Far Away).mkv", "12 [A] - Parade.mkv",
+                "12 [B] - Parade.mkv"), naruto.extras().stream().map(extra -> extra.file().name()).sorted().toList());
+        // The film in the pack is still a film of its own.
+        assertEquals(1, catalog.movies().size());
+    }
+
+    @Test
+    void numberedFilesOutsideAShowsPackStayShows() {
+        // Too few episodes to call the folder one show's pack.
+        Catalog small = catalog("Mix/[Group] Show - 001.mkv", "Mix/[Group] Show - 002.mkv", "Mix/01 - Tari Tari.mkv");
+        assertEquals(List.of("Show", "Tari Tari"), small.shows().stream().map(Show::title).sorted().toList());
+
+        // A real second show in the same folder, with more than a handful of episodes, stays a show.
+        List<String> paths = new java.util.ArrayList<>();
+        for (int episode = 1; episode <= 6; episode++) {
+            paths.add("Anime/" + String.format("[Group] Naruto - %03d.mkv", episode));
+            paths.add("Anime/" + String.format("%02d - Tari Tari.mkv", episode));
+        }
+        Catalog mixed = catalog(paths.toArray(String[]::new));
+        assertEquals(List.of("Naruto", "Tari Tari"), mixed.shows().stream().map(Show::title).sorted().toList());
+        assertTrue(mixed.shows().stream().allMatch(show -> show.extras().isEmpty()));
+    }
 }

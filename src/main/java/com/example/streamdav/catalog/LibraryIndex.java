@@ -48,10 +48,12 @@ public record LibraryIndex(List<Item> items) {
      * @param id       stable across refreshes: the provider id once matched, otherwise the parsed title
      * @param itemKeys the parsed titles merged into this item, for fixing its match
      * @param versions a movie's files (several for several editions or qualities); empty for shows
+     * @param extras   a show's files that aren't episodes, such as its openings and endings
      * @param added    when its newest file was first found
      */
     public record Item(String id, Kind kind, Category category, String title, Integer year, Optional<Metadata> metadata,
-                       List<String> itemKeys, List<FileRef> versions, List<EpisodeEntry> episodes, Instant added) {
+                       List<String> itemKeys, List<FileRef> versions, List<EpisodeEntry> episodes, List<FileRef> extras,
+                       Instant added) {
 
         /** Season numbers in display order, as {@link Catalog.Show#seasons()} orders them. */
         public List<Integer> seasons() {
@@ -121,6 +123,7 @@ public record LibraryIndex(List<Item> items) {
             for (Catalog.Episode episode : show.episodes()) {
                 builder.addEpisode(episode, episode.versions().stream().map(ref).toList());
             }
+            show.extras().forEach(file -> builder.extras.add(ref.apply(file)));
         }
         return new LibraryIndex(builders.values().stream()
                 .map(builder -> builder.build(builder.metadata.map(episodes).orElse(List.of())))
@@ -155,6 +158,7 @@ public record LibraryIndex(List<Item> items) {
         private final boolean animeHint;
         private final List<String> keys = new ArrayList<>();
         private final List<FileRef> versions = new ArrayList<>();
+        private final List<FileRef> extras = new ArrayList<>();
         private final Map<String, Episode> episodes = new LinkedHashMap<>();
 
         private record Episode(Integer season, List<Integer> numbers, List<FileRef> versions) {
@@ -198,7 +202,7 @@ public record LibraryIndex(List<Item> items) {
                     .map(FileRef::added).filter(Objects::nonNull).max(Comparator.naturalOrder()).orElse(null);
             return new Item(id, kind, category, metadata.map(Metadata::title).orElse(parsedTitle),
                     metadata.map(Metadata::year).orElse(parsedYear), metadata, List.copyOf(keys), List.copyOf(versions),
-                    entries, added);
+                    entries, List.copyOf(extras), added);
         }
 
         /** By season and number; an absolute number counts through the provider's regular seasons. */

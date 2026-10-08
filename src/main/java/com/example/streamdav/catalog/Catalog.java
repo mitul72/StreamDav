@@ -11,6 +11,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -28,9 +30,10 @@ public record Catalog(List<Movie> movies, List<Show> shows, List<ScannedFile> un
     }
 
     /**
-     * @param anime the file names looked like anime releases; metadata can confirm it later
+     * @param anime  the file names looked like anime releases; metadata can confirm it later
+     * @param extras files packed with the show that aren't episodes, such as its openings and endings
      */
-    public record Show(String title, Integer year, boolean anime, List<Episode> episodes) {
+    public record Show(String title, Integer year, boolean anime, List<Episode> episodes, List<ScannedFile> extras) {
 
         /** Season numbers in display order, specials (season 0) last; null stands for absolutely numbered episodes. */
         public List<Integer> seasons() {
@@ -75,6 +78,9 @@ public record Catalog(List<Movie> movies, List<Show> shows, List<ScannedFile> un
 
     public static Catalog of(List<ScannedFile> files) {
         files = joinNumberedFilesToShows(files);
+        Map<String, List<ScannedFile>> extras = extrasByShow(files);
+        Set<ScannedFile> extraFiles = extras.values().stream().flatMap(List::stream).collect(Collectors.toSet());
+        files = files.stream().filter(file -> !extraFiles.contains(file)).toList();
         Map<String, List<ScannedFile>> movies = new LinkedHashMap<>();
         Map<String, List<ScannedFile>> shows = new LinkedHashMap<>();
         List<ScannedFile> unsorted = new ArrayList<>();
@@ -92,7 +98,8 @@ public record Catalog(List<Movie> movies, List<Show> shows, List<ScannedFile> un
         Comparator<String> byTitle = String.CASE_INSENSITIVE_ORDER;
         return new Catalog(
                 movies.values().stream().map(Catalog::movie).sorted(Comparator.comparing(Movie::title, byTitle)).toList(),
-                shows.values().stream().map(Catalog::show).sorted(Comparator.comparing(Show::title, byTitle)).toList(),
+                shows.entrySet().stream().map(entry -> show(entry.getValue(), extras.getOrDefault(entry.getKey(), List.of())))
+                        .sorted(Comparator.comparing(Show::title, byTitle)).toList(),
                 List.copyOf(unsorted));
     }
 
@@ -124,13 +131,55 @@ public record Catalog(List<Movie> movies, List<Show> shows, List<ScannedFile> un
     }
 
     private static final Pattern NUMBERED_TITLE = Pattern.compile("^(.+?) (\\d{1,4})$");
+    /** {@code 02 - Haruka Kanata (Far Away).mkv}, {@code 12 [A] - Parade.mkv}: a number and a name, no show. */
+    private static final Pattern NUMBER_AND_NAME = Pattern.compile("^\\d{1,3}(?:\\s*\\[[^\\]]*\\])?\\s*-\\s");
+    /** A folder needs this many episodes of one show before its odd files count as that show's extras. */
+    private static final int SHOW_FOLDER_EPISODES = 5;
+    /** More files than this under one name are a show of their own, even in another show's folder. */
+    private static final int MAX_STRAY_FILES = 3;
+
+    /**
+     * "[Anime Time] Naruto Complete/02 - Haruka Kanata (Far Away).mkv" reads as episode 2 of a show called "Haruka
+     * Kanata", but it's Naruto's second opening: servers like Real-Debrid list a pack's files in one folder, losing
+     * the "Openings" folder it came from. In a folder that's clearly one show, files named only by a number and a
+     * name, that make up a handful of one-off "shows", are that show's extras.
+     */
+    private static Map<String, List<ScannedFile>> extrasByShow(List<ScannedFile> files) {
+        Map<String, Long> filesPerShow = files.stream().filter(file -> file.release().kind() == Kind.EPISODE)
+                .collect(Collectors.groupingBy(file -> key(file.release().title()), Collectors.counting()));
+        Map<List<String>, List<ScannedFile>> byFolder = files.stream()
+                .collect(Collectors.groupingBy(ScannedFile::folders, LinkedHashMap::new, Collectors.toList()));
+        Map<String, List<ScannedFile>> extras = new LinkedHashMap<>();
+        for (List<ScannedFile> folder : byFolder.values()) {
+            Map<String, Long> episodesPerShow = folder.stream()
+                    .filter(file -> file.release().kind() == Kind.EPISODE && !numberAndName(file))
+                    .collect(Collectors.groupingBy(file -> key(file.release().title()), Collectors.counting()));
+            Optional<Map.Entry<String, Long>> main = episodesPerShow.entrySet().stream().max(Map.Entry.comparingByValue());
+            if (main.isEmpty() || main.get().getValue() < SHOW_FOLDER_EPISODES) {
+                continue;
+            }
+            String show = main.get().getKey();
+            for (ScannedFile file : folder) {
+                String title = key(file.release().title());
+                if (file.release().kind() == Kind.EPISODE && numberAndName(file) && !title.equals(show)
+                        && filesPerShow.getOrDefault(title, 0L) <= MAX_STRAY_FILES) {
+                    extras.computeIfAbsent(show, k -> new ArrayList<>()).add(file);
+                }
+            }
+        }
+        return extras;
+    }
+
+    private static boolean numberAndName(ScannedFile file) {
+        return NUMBER_AND_NAME.matcher(file.file().name()).find();
+    }
 
     private static Movie movie(List<ScannedFile> versions) {
         ParsedRelease first = versions.getFirst().release();
         return new Movie(mostCommon(versions, file -> file.release().title()), first.year(), List.copyOf(versions));
     }
 
-    private static Show show(List<ScannedFile> files) {
+    private static Show show(List<ScannedFile> files, List<ScannedFile> extras) {
         Map<String, List<ScannedFile>> byEpisode = new LinkedHashMap<>();
         for (ScannedFile file : files) {
             ParsedRelease release = file.release();
@@ -146,7 +195,7 @@ public record Catalog(List<Movie> movies, List<Show> shows, List<ScannedFile> un
                 .toList();
         Integer year = files.stream().map(file -> file.release().year()).filter(Objects::nonNull).findFirst().orElse(null);
         boolean anime = files.stream().anyMatch(file -> file.release().anime());
-        return new Show(mostCommon(files, file -> file.release().title()), year, anime, episodes);
+        return new Show(mostCommon(files, file -> file.release().title()), year, anime, episodes, List.copyOf(extras));
     }
 
     /** The spelling most files use, so one oddly named file doesn't rename the show. */
