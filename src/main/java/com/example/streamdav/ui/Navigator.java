@@ -16,6 +16,7 @@ import javafx.scene.control.ButtonType;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.TextInputDialog;
 import javafx.scene.input.KeyEvent;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.stage.Stage;
 import org.apache.logging.log4j.LogManager;
@@ -191,7 +192,7 @@ public final class Navigator {
             PlayerController current = player;
             backdrop.addEventHandler(KeyEvent.KEY_PRESSED, current::handleKey);
             show(backdrop, file.name() + " — " + APP_NAME);
-            videoOverlay = new VideoOverlay(stage, view.root());
+            videoOverlay = new VideoOverlay(stage, (Region) view.root());
             player.init(this, file, engine.get(), from.streamUrl(file));
             videoOverlay.show();
         } else {
@@ -229,6 +230,11 @@ public final class Navigator {
     }
 
     private void openExternally(RemoteFile file, MediaLibrary from) {
+        openExternally(file, from.streamUrl(file));
+    }
+
+    /** Uses the same server URL as the embedded player, including files opened from the library. */
+    void openExternally(RemoteFile file, URI streamUrl) {
         Optional<String> command = settings.externalPlayerCommand().or(ExternalPlayer::detect);
         if (command.isEmpty()) {
             command = promptForExternalPlayer("No external player was found. Install mpv or VLC, "
@@ -238,7 +244,7 @@ public final class Navigator {
             return;
         }
         try {
-            ExternalPlayer.launch(command.get(), from.streamUrl(file));
+            ExternalPlayer.launch(command.get(), streamUrl);
         } catch (IOException e) {
             log.warn("Could not start external player '{}'", command.get(), e);
             showError("Couldn't start the external player", e.getMessage());
